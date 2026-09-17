@@ -28,6 +28,14 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
+  it('protects the billing read routes', async () => {
+    const subscriptions = await request(app).get('/api/v1/subscriptions');
+    const entitlements = await request(app).get('/api/v1/businesses/550e8400-e29b-41d4-a716-446655440000/entitlements');
+    expect(subscriptions.status).toBe(401);
+    expect(subscriptions.body.error.code).toBe('UNAUTHENTICATED');
+    expect(entitlements.status).toBe(401);
+    expect(entitlements.body.error.code).toBe('UNAUTHENTICATED');
+  });
   it('rejects invalid request IDs', async () => {
     const response = await request(app).get('/health').set('x-request-id', 'bad id');
     expect(response.status).toBe(400);
