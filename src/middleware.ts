@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { AppError, errorBody } from './errors.js';
-import { isClerkConfigured } from './config.js';
+import { clerkContextMiddleware, requireOperator } from './operator-auth.js';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -17,20 +17,7 @@ export function requestId(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
-export function requireOperator(req: Request, _res: Response, next: NextFunction): void {
-  const authorization = req.header('authorization');
-  if (!authorization || !/^Bearer [^\s]+$/.test(authorization)) {
-    next(new AppError(401, 'UNAUTHENTICATED', 'Authentication is required.'));
-    return;
-  }
-  // Token verification and operator role lookup remain behind this seam.
-  // A configured verifier must be installed before a caller can be authorized.
-  if (!isClerkConfigured()) {
-    next(new AppError(503, 'OPERATOR_AUTH_NOT_CONFIGURED', 'Operator authentication is not configured.'));
-    return;
-  }
-  return next(new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.'));
-}
+export { clerkContextMiddleware, requireOperator };
 
 export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction): void {
   const requestIdValue = String(res.locals.requestId || 'unknown');
