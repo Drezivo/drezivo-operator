@@ -41,6 +41,14 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
+  it('protects the operations read routes', async () => {
+    const jobs = await request(app).get('/api/v1/jobs');
+    const notifications = await request(app).get('/api/v1/notifications');
+    expect(jobs.status).toBe(401);
+    expect(jobs.body.error.code).toBe('UNAUTHENTICATED');
+    expect(notifications.status).toBe(401);
+    expect(notifications.body.error.code).toBe('UNAUTHENTICATED');
+  });
   it('rejects invalid request IDs', async () => {
     const response = await request(app).get('/health').set('x-request-id', 'bad id');
     expect(response.status).toBe(400);

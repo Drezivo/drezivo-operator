@@ -4,6 +4,7 @@ import { clerkContextMiddleware, errorHandler, requestId, requireOperator } from
 import { createOperatorReadRouter, unavailableReadPort } from './operator-read/index.js';
 import { createOperatorBillingRouter, unavailableBillingReadPort } from './operator-billing/index.js';
 import { createOperatorAuditRouter, unavailableAuditPort } from './operator-audit/index.js';
+import { createOperatorOperationsRouter, unavailableOperationsPort } from './operator-operations/index.js';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -17,4 +18,5 @@ app.get('/operator/health', requireOperator(), (_req: Request, res: Response) =>
 app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
 app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
 app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator()));
+app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
 app.use(errorHandler);
