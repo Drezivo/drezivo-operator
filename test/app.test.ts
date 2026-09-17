@@ -28,6 +28,15 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('INVALID_REQUEST_ID');
   });
+
+  it('uses the canonical error envelope', async () => {
+    const response = await request(app).get('/health').set('x-request-id', 'bad id');
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'INVALID_REQUEST_ID', message: 'The request ID is invalid.' },
+      request_id: expect.any(String),
+    });
+  });
   it('rejects oversized request IDs', async () => {
     const response = await request(app).get('/health').set('x-request-id', 'x'.repeat(129));
     expect(response.status).toBe(400);

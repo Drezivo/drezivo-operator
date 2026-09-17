@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppError } from '../src/errors.js';
-import { authorizeOperator } from '../src/operator-auth.js';
+import { authorizeOperator, mapClerkProviderError } from '../src/operator-auth.js';
 
 const expectedOrganizationId = 'org_drezivo_operations';
 const verified = { isAuthenticated: true, userId: 'user_123', orgId: expectedOrganizationId };
@@ -27,5 +27,19 @@ describe('operator authorization', () => {
       requestId: 'req_3',
     });
     expect(Object.keys(principal).sort()).toEqual(['clerkUserId', 'operatorOrganizationId', 'requestId'].sort());
+  });
+
+  it('maps invalid provider credentials to a safe 401', () => {
+    expect(mapClerkProviderError({ status: 401, code: 'token_invalid' })).toMatchObject({
+      status: 401,
+      code: 'UNAUTHENTICATED',
+    });
+  });
+
+  it('maps provider dependency failures to a safe 503', () => {
+    expect(mapClerkProviderError({ status: 503, code: 'upstream_timeout' })).toMatchObject({
+      status: 503,
+      code: 'OPERATOR_AUTH_UNAVAILABLE',
+    });
   });
 });

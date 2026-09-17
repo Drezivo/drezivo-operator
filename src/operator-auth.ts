@@ -56,7 +56,32 @@ export function clerkContextMiddleware(): RequestHandler {
   if (!isClerkConfigured()) {
     return (_req, _res, next) => next();
   }
-  return clerkMiddleware({ secretKey: config.CLERK_SECRET_KEY });
+  const clerkHandler = clerkMiddleware({ secretKey: config.CLERK_SECRET_KEY });
+  return (req, res, next) => {
+    try {
+      clerkHandler(req, res, (error?: unknown) => next(error === undefined ? undefined : mapClerkProviderError(error)));
+    } catch (error) {
+      next(mapClerkProviderError(error));
+    }
+  };
+}
+
+export function mapClerkProviderError(error: unknown): AppError {
+  const details = asProviderError(error);
+  const status = details.status;
+  const code = details.code?.toLowerCase() ?? '';
+  if (status === 401 || status === 403 || /auth|token|session|jwt|credential|unauthor/.test(code)) {
+    return new AppError(401, 'UNAUTHENTICATED', 'Authentication is required.');
+  }
+  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator authentication is temporarily unavailable.');
+}
+
+function asProviderError(error: unknown): { status?: number; code?: string } {
+  if (!error || typeof error !== 'object') return {};
+  const value = error as { status?: unknown; statusCode?: unknown; code?: unknown; name?: unknown };
+  const status = typeof value.status === 'number' ? value.status : typeof value.statusCode === 'number' ? value.statusCode : undefined;
+  const code = typeof value.code === 'string' ? value.code : typeof value.name === 'string' ? value.name : undefined;
+  return { status, code };
 }
 
 /**
