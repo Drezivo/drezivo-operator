@@ -23,6 +23,11 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(503);
     expect(response.body.error.code).toBe('OPERATOR_AUTH_NOT_CONFIGURED');
   });
+  it('protects the read-only operator API routes', async () => {
+    const response = await request(app).get('/api/v1/overview');
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
   it('rejects invalid request IDs', async () => {
     const response = await request(app).get('/health').set('x-request-id', 'bad id');
     expect(response.status).toBe(400);
