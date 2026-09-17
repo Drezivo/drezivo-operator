@@ -35,4 +35,5 @@ Environment variable names and deployment requirements are documented in `CONTRI
 - `CONTRIBUTING.md` defines branches, commits, pull requests, and release checks.
 - `docs/OPERATOR-SYSTEM-PRD.md` defines the product scope.
 - `docs/OPERATOR-BACKEND-TRD.md` defines backend boundaries and phased delivery.
+- `docs/OPERATOR-PERMISSION-BOUNDARY-DESIGN.md` defines the shared fail-closed permission seam.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
