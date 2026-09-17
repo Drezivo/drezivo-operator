@@ -5,6 +5,7 @@ const MAX_RESPONSE_BYTES = 1_048_576;
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const allowedMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const dependencyError = () => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business service is unavailable.');
+const invalidResponseError = () => new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The business service returned an invalid response.');
 const authError = () => new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Internal service authentication is unavailable.');
 
 export type ServiceAuth = (requestId: string) => string | Promise<string>;
@@ -17,6 +18,7 @@ export type InternalServiceClientOptions = {
   maxResponseBytes?: number;
 };
 export type RequestJsonOptions = { requestId: string; method?: string; body?: unknown };
+export type JsonResponse<T> = { status: number; data: T | null };
 
 function timeout(value: number | undefined): number {
   const actual = value ?? DEFAULT_TIMEOUT_MS;
@@ -58,7 +60,8 @@ export class InternalServiceClient {
     this.fetchImpl = options.fetchImpl ?? fetch; this.maxResponseBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1 || this.maxResponseBytes > MAX_RESPONSE_BYTES) throw dependencyError();
   }
-  async requestJson<T>(path: string, request: RequestJsonOptions): Promise<T> {
+  async requestJsonResponse<T>(path: string, request: RequestJsonOptions, acceptedStatuses: readonly number[] = [200, 404]): Promise<JsonResponse<T>> {
+    if (!Array.isArray(acceptedStatuses) || acceptedStatuses.length === 0 || acceptedStatuses.some((status) => !Number.isInteger(status) || status < 100 || status > 599)) throw dependencyError();
     const url = relativeUrl(this.baseUrl, path);
     if (!request || typeof request !== 'object') throw dependencyError();
     if (typeof request.requestId !== 'string' || !requestIdPattern.test(request.requestId)) throw dependencyError();
@@ -73,12 +76,19 @@ export class InternalServiceClient {
       if (request.body !== undefined) headers['Content-Type'] = 'application/json';
       const response = await this.fetchImpl(url, { method, headers, body: request.body === undefined ? undefined : JSON.stringify(request.body), redirect: 'error', signal: controller.signal });
       const text = await readBounded(response, this.maxResponseBytes);
-      if (!response.ok) throw dependencyError();
-      try { return JSON.parse(text) as T; } catch { throw dependencyError(); }
+      if (!acceptedStatuses.includes(response.status)) throw dependencyError();
+      if (response.status === 404) return { status: response.status, data: null };
+      if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw invalidResponseError();
+      try { return { status: response.status, data: JSON.parse(text) as T }; } catch { throw invalidResponseError(); }
     } catch (error) {
       if (error instanceof AppError) throw error;
       throw dependencyError();
     } finally { clearTimeout(timer); }
+  }
+  async requestJson<T>(path: string, request: RequestJsonOptions): Promise<T> {
+    const result = await this.requestJsonResponse<T>(path, request, [200]);
+    if (result.data === null) throw dependencyError();
+    return result.data;
   }
 }
 

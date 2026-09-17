@@ -39,9 +39,9 @@ export type BusinessListFilters = { q?: string; status: readonly (typeof statuse
 export type BusinessListResult = { items: BusinessSummary[]; next_cursor: { createdAt: string; tenantId: string } | null };
 
 export type ReadPort = {
-  overview(input: { asOf: string | undefined }): Promise<OperatorOverview>;
-  listBusinesses(input: { filters: BusinessListFilters; limit: number; cursor: { createdAt: string; tenantId: string } | null }): Promise<BusinessListResult>;
-  getBusiness(input: { tenantId: string }): Promise<BusinessDetail | null>;
+  overview(input: { asOf: string | undefined; requestId: string }): Promise<OperatorOverview>;
+  listBusinesses(input: { filters: BusinessListFilters; limit: number; cursor: { createdAt: string; tenantId: string } | null; requestId: string }): Promise<BusinessListResult>;
+  getBusiness(input: { tenantId: string; requestId: string }): Promise<BusinessDetail | null>;
 };
 
 export const unavailableReadPort: ReadPort = {
@@ -96,7 +96,7 @@ export function createOperatorReadRouter(readPort: ReadPort = unavailableReadPor
   router.get('/overview', permissionMiddleware('operator.overview.read'), async (req, res, next) => {
     try {
       const { result } = parseQuery(req, options, 'overview');
-      const data = operatorOverviewSchema.parse(await readPort.overview({ asOf: result.as_of }));
+      const data = operatorOverviewSchema.parse(await readPort.overview({ asOf: result.as_of, requestId: String(res.locals.requestId ?? 'unknown') }));
       const cap = Math.max(1, Math.min(options.recentSignupLimit ?? 50, 100));
       data.recent_signups = data.recent_signups.slice(0, cap);
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope(data, String(res.locals.requestId ?? 'unknown')));
@@ -105,7 +105,7 @@ export function createOperatorReadRouter(readPort: ReadPort = unavailableReadPor
   router.get('/businesses', permissionMiddleware('business.summary.read'), async (req, res, next) => {
     try {
       const { result, filters } = parseQuery(req, options, 'list');
-      const data = await readPort.listBusinesses({ filters, limit: result.limit, cursor: result.cursor ? decodeBusinessCursor(result.cursor, filters) : null });
+      const data = await readPort.listBusinesses({ filters, limit: result.limit, cursor: result.cursor ? decodeBusinessCursor(result.cursor, filters) : null, requestId: String(res.locals.requestId ?? 'unknown') });
       const parsed = z.object({ items: z.array(businessSummarySchema), next_cursor: z.object({ createdAt: isoDate, tenantId: uuid }).strict().nullable() }).strict().parse(data);
       const response = { items: parsed.items, next_cursor: parsed.next_cursor ? encodeBusinessCursor(parsed.next_cursor, filters) : null };
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope(response, String(res.locals.requestId ?? 'unknown')));
@@ -115,7 +115,7 @@ export function createOperatorReadRouter(readPort: ReadPort = unavailableReadPor
     try {
       const tenantId = typeof req.params.tenantId === 'string' ? req.params.tenantId : '';
       if (!uuid.safeParse(tenantId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The tenant identifier is invalid.');
-      const data = await readPort.getBusiness({ tenantId });
+      const data = await readPort.getBusiness({ tenantId, requestId: String(res.locals.requestId ?? 'unknown') });
       if (data === null) throw new AppError(404, 'NOT_FOUND', 'The business was not found.');
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope(businessDetailSchema.parse(data), String(res.locals.requestId ?? 'unknown')));
     } catch (error) { sendError(next, error); }

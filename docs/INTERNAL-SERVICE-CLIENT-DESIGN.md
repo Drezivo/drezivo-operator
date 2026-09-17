@@ -1,13 +1,13 @@
 # Internal business service client boundary
 
-**Status:** Implemented transport boundary, not wired to production adapters  
+**Status:** Implemented transport boundary; the business read adapter now uses it
 **Scope:** Outbound calls from the operator API to approved business API endpoints
 
 ## Purpose
 
 The operator API must call the business platform through a controlled internal transport. This client provides the network boundary without choosing a deployment secret, duplicating business rules, or exposing upstream responses directly to operators.
 
-The caller remains responsible for validating the returned JSON against its route-specific Zod schema.
+The caller remains responsible for validating the returned JSON against its route-specific Zod schema. The client also exposes a status-aware form for adapters that have an approved not-found contract.
 
 ## Transport rules
 
@@ -23,12 +23,13 @@ The client enforces:
 - a response body limit of at most 1 MiB
 - redirect rejection so service credentials cannot follow a redirect to another host
 - JSON accept and conditional content-type headers
+- status-aware responses with an explicit accepted-status allowlist
 
 The service authentication value is supplied by an injected callback. The callback receives only the request ID and must return a non-empty value without control characters. This leaves the approved service authentication mechanism, rotation, and secret source to deployment configuration without committing credentials or environment files.
 
 ## Error behavior
 
-The client never returns raw upstream error bodies. Invalid URLs, unsupported methods, invalid request shapes, timeouts, aborts, non-success responses, oversized responses, malformed JSON, and transport failures map to a generic 503 DEPENDENCY_UNAVAILABLE error.
+The client never returns raw upstream error bodies. Invalid URLs, unsupported methods, invalid request shapes, timeouts, aborts, non-success responses, oversized responses, and transport failures map to a generic 503 DEPENDENCY_UNAVAILABLE error. A successful response with a missing or malformed JSON body maps to 503 DEPENDENCY_INVALID_RESPONSE.
 
 Missing, malformed, or unsafe service authentication maps to 503 OPERATOR_AUTH_UNAVAILABLE. No token, body, provider response, or URL is logged by this boundary.
 

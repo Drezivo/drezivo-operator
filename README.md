@@ -38,4 +38,5 @@ Environment variable names and deployment requirements are documented in `CONTRI
 - `docs/OPERATOR-PERMISSION-BOUNDARY-DESIGN.md` defines the shared fail-closed permission seam.
 - `docs/OPERATOR-SCOPE-BOUNDARY-DESIGN.md` defines the separate tenant-scope seam.
 - `docs/INTERNAL-SERVICE-CLIENT-DESIGN.md` defines the bounded business-service transport seam.
+- `docs/BUSINESS-READ-ADAPTER-DESIGN.md` defines the request-correlated read adapter boundary.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.

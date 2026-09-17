@@ -16,29 +16,29 @@ function response(body: unknown, status = 200): Response {
 
 describe('business read adapter', () => {
   it('passes auth and validates a successful overview envelope', async () => {
-    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    let authenticatedRequestId = ''; const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
       expect(String(url)).toBe('https://business.test/internal/operator/v1/overview');
-      expect(init?.headers).toEqual({ authorization: 'Bearer internal', accept: 'application/json' });
+      expect(init?.headers).toEqual({ Accept: 'application/json', 'X-Request-ID': 'req-1', Authorization: 'Bearer internal' });
       return response({ success: true, data: overview, request_id: 'ignored' });
     });
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', requestAuth: 'Bearer internal', fetchImpl }).overview({ asOf: undefined })).resolves.toEqual(overview);
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async (requestId) => { authenticatedRequestId = requestId; return 'Bearer internal'; }, fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).resolves.toEqual(overview); expect(authenticatedRequestId).toBe('req-1');
   });
 
   it('maps timeout to a safe dependency error', async () => {
     const fetchImpl = vi.fn((_url: string | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
     }));
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', timeoutMs: 5, fetchImpl }).overview({ asOf: undefined })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_UNAVAILABLE' });
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', timeoutMs: 250, fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_UNAVAILABLE' });
   });
 
   it('rejects malformed downstream payloads without exposing details', async () => {
     const fetchImpl = vi.fn(async () => response({ success: true, data: { as_of: 'bad' } }));
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl }).overview({ asOf: undefined })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_INVALID_RESPONSE', message: 'The business read service returned an invalid response.' });
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_INVALID_RESPONSE', message: 'The business read service returned an invalid response.' });
   });
 
   it('maps downstream failures without returning raw body text', async () => {
     const fetchImpl = vi.fn(async () => response({ secret: 'must not escape' }, 500));
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl }).overview({ asOf: undefined })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_UNAVAILABLE', message: 'The business read service is unavailable.' });
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_UNAVAILABLE', message: 'The business read service is unavailable.' });
   });
 
   it('maps list filters and cursor to the approved query contract', async () => {
@@ -54,35 +54,35 @@ describe('business read adapter', () => {
       expect(parsed.searchParams.get('cursor_tenant_id')).toBe('550e8400-e29b-41d4-a716-446655440000');
       return response({ success: true, data: { items: [], next_cursor: null } });
     });
-    await createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl }).listBusinesses({
+    await createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl }).listBusinesses({
       filters: { q: 'shop', status: ['active', 'restricted'], plan_code: 'professional', sort: 'created_at_desc' },
       limit: 10,
-      cursor: { createdAt: iso, tenantId: '550e8400-e29b-41d4-a716-446655440000' },
+      cursor: { createdAt: iso, tenantId: '550e8400-e29b-41d4-a716-446655440000' }, requestId: 'req-1',
     });
   });
 
   it('returns null for a missing business detail', async () => {
     const fetchImpl = vi.fn(async () => response({}, 404));
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl }).getBusiness({ tenantId: '550e8400-e29b-41d4-a716-446655440000' })).resolves.toBeNull();
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl }).getBusiness({ tenantId: '550e8400-e29b-41d4-a716-446655440000', requestId: 'req-1' })).resolves.toBeNull();
   });
 
   it('maps overview and list 404 responses to dependency unavailable', async () => {
     const fetchImpl = vi.fn(async () => response({}, 404));
-    const adapter = createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl });
-    await expect(adapter.overview({ asOf: undefined })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
-    await expect(adapter.listBusinesses({ filters: { status: [], sort: 'created_at_desc' }, limit: 10, cursor: null })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
+    const adapter = createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl });
+    await expect(adapter.overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
+    await expect(adapter.listBusinesses({ filters: { status: [], sort: 'created_at_desc' }, limit: 10, cursor: null, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
   });
 
   it('rejects missing and non-JSON content types safely', async () => {
     const missing = vi.fn(async () => new Response(JSON.stringify({ success: true, data: overview }), { status: 200 }));
     const html = vi.fn(async () => new Response('<html>error</html>', { status: 200, headers: { 'content-type': 'text/html' } }));
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl: missing }).overview({ asOf: undefined })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', fetchImpl: html }).overview({ asOf: undefined })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl: missing }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl: html }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
   });
 
   it('rejects invalid base URLs with a safe dependency error', () => {
-    expect(() => createBusinessReadAdapter({ baseUrl: 'ftp://business.test' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
-    expect(() => createBusinessReadAdapter({ baseUrl: 'not a url' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
-    expect(() => createBusinessReadAdapter({ baseUrl: 'http://business.test' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
+    expect(() => createBusinessReadAdapter({ baseUrl: 'ftp://business.test', serviceAuth: async () => 'Bearer internal' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
+    expect(() => createBusinessReadAdapter({ baseUrl: 'not a url', serviceAuth: async () => 'Bearer internal' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
+    expect(() => createBusinessReadAdapter({ baseUrl: 'http://business.test', serviceAuth: async () => 'Bearer internal' })).toThrowError(expect.objectContaining({ code: 'DEPENDENCY_UNAVAILABLE' }));
   });
 });
