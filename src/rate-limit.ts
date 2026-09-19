@@ -52,9 +52,29 @@ export function createRateLimitMiddleware(options: RateLimitOptions = {}): Reque
   const store = options.store ?? new InMemoryRateLimitStore(limit, windowMs, maxKeys);
   const key = options.key ?? ((req: Request) => req.ip || req.socket.remoteAddress || 'unknown');
   return (req: Request, res: Response, next: NextFunction): void => {
-    const result = store.consume(key(req), Date.now());
+    let result: unknown;
+    try {
+      result = store.consume(key(req), Date.now());
+    } catch {
+      next(new AppError(503, 'RATE_LIMIT_UNAVAILABLE', 'Request protection is temporarily unavailable.'));
+      return;
+    }
+    if (!isRateLimitResult(result)) {
+      next(new AppError(503, 'RATE_LIMIT_UNAVAILABLE', 'Request protection is temporarily unavailable.'));
+      return;
+    }
     if (result.allowed) { next(); return; }
     res.setHeader('Retry-After', String(result.retryAfterSeconds));
     next(new AppError(429, 'RATE_LIMITED', 'Too many requests. Please try again later.'));
   };
+}
+
+function isRateLimitResult(value: unknown): value is { allowed: boolean; retryAfterSeconds: number } {
+  if (typeof value !== 'object' || value === null) return false;
+  const result = value as { allowed?: unknown; retryAfterSeconds?: unknown };
+  return typeof result.allowed === 'boolean'
+    && typeof result.retryAfterSeconds === 'number'
+    && Number.isFinite(result.retryAfterSeconds)
+    && Number.isInteger(result.retryAfterSeconds)
+    && result.retryAfterSeconds >= 1;
 }
