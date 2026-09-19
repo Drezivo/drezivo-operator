@@ -41,11 +41,20 @@ function relativeUrl(baseUrl: URL, path: unknown): URL {
 }
 async function readBounded(response: Response, max: number): Promise<string> {
   const declared = response.headers.get('content-length');
-  if (declared && (!/^\d+$/.test(declared) || Number(declared) > max)) throw dependencyError();
+  if (declared && (!/^\d+$/.test(declared) || Number(declared) > max)) {
+    if (response.body) await response.body.cancel();
+    throw dependencyError();
+  }
   if (!response.body) return '';
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0;
   try {
-    for (;;) { const part = await reader.read(); if (part.done) break; total += part.value.byteLength; if (total > max) throw dependencyError(); chunks.push(part.value); }
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      total += part.value.byteLength;
+      if (total > max) { await reader.cancel(); throw dependencyError(); }
+      chunks.push(part.value);
+    }
   } finally { reader.releaseLock(); }
   return new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
 }
