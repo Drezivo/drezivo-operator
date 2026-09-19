@@ -21,7 +21,15 @@ export const entitlementItemSchema = z.object({ capability: z.string().min(1), e
 export const entitlementDetailSchema = z.object({
   tenant_id: uuid, plan_code: planCodeSchema, capability_count: z.number().int().nonnegative(),
   overridden_capability_count: z.number().int().nonnegative(), capabilities: z.array(entitlementItemSchema),
-}).strict();
+}).strict().superRefine(({ capabilities }, ctx) => {
+  const seen = new Set<string>();
+  capabilities.forEach((item, index) => {
+    if (seen.has(item.capability)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['capabilities', index, 'capability'], message: 'Capability names must be unique.' });
+    }
+    seen.add(item.capability);
+  });
+});
 export type SubscriptionSummary = z.infer<typeof subscriptionSummarySchema>;
 export type SubscriptionPage = z.infer<typeof subscriptionPageSchema>;
 export type EntitlementDetail = z.infer<typeof entitlementDetailSchema>;
