@@ -7,7 +7,7 @@
 
 The operator API is an Express and TypeScript REST service. It is a control-plane boundary between the internal operator web app and the business platform. The dependency direction is route validation and authorization, application service, controlled business command or read projection, then data access. HTTP handlers do not contain business rules or direct unrestricted tenant access.
 
-The API is versioned under `/api/v1`. A health endpoint is separate from authenticated operator routes and returns only service readiness information.
+The API is versioned under `/api/v1`. The unauthenticated `/health` endpoint is a process liveness check that currently returns `{ "status": "ok" }`. It does not verify dependency readiness. Dependency readiness is deployment-managed and remains pending approved dependency wiring and health checks.
 
 ## Trust boundaries
 
@@ -69,6 +69,22 @@ S3 access is backend-only. Objects are private, namespaced, size and content-typ
 ## Observability and operations
 
 Use structured redacted logs, request IDs, metrics for authorization failures, grant creation, command latency, job age, retries, and notification outcomes. Health checks distinguish process readiness from dependency readiness. Alerts must not include secrets or raw personal data.
+
+### Process lifecycle bounds
+
+The HTTP server must apply these process-level bounds:
+
+| Bound | Value | Purpose |
+| --- | ---: | --- |
+| `requestTimeout` | 30 seconds | Maximum time allowed for an inbound request at the server boundary |
+| `headersTimeout` | 10 seconds | Maximum time allowed to receive request headers |
+| `keepAliveTimeout` | 5 seconds | Idle keep-alive socket timeout |
+| `maxRequestsPerSocket` | 100 | Maximum requests served on one socket before it is rotated |
+| Graceful drain deadline | 10 seconds | Time after `SIGTERM` or `SIGINT` to finish in-flight work before forced connection close |
+
+On `SIGTERM` and `SIGINT`, the process must stop accepting new connections, allow in-flight requests to complete during the 10-second drain window, then force-close remaining connections and exit. Shutdown handlers must be idempotent and must not start new background work. The deployment or orchestrator must remove the instance from readiness before sending the shutdown signal; this server lifecycle slice does not expose or toggle readiness itself.
+
+These are process-level HTTP lifecycle bounds. They do not replace timeouts on the `InternalServiceClient`, database pool, Clerk, S3, provider, worker lease, or any other upstream dependency. Each dependency still needs its own bounded timeout and safe cancellation behavior. This lifecycle slice adds no database table, index, migration, connection, or data-retention change.
 
 ## Testing and release gates
 
