@@ -8,6 +8,15 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(200);
     expect(response.headers['x-request-id']).toBeTruthy();
   });
+  it('keeps public liveness and readiness available when Clerk auth is unavailable', async () => {
+    const health = await request(app).get('/health');
+    const readiness = await request(app).get('/ready');
+
+    expect(health.status).toBe(200);
+    expect(health.body).toEqual({ status: 'ok' });
+    expect(readiness.status).toBe(200);
+    expect(readiness.body).toEqual({ status: 'ready' });
+  });
   it('fails closed for protected routes', async () => {
     const response = await request(app).get('/operator/health');
     expect(response.status).toBe(401);

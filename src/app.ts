@@ -13,11 +13,11 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(requestId);
-app.use(clerkContextMiddleware());
-app.use(express.json({ limit: '1mb' }));
-
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
 app.get('/ready', (_req, res) => res.status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
+
+app.use(clerkContextMiddleware());
+app.use(express.json({ limit: '1mb' }));
 app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.status(200).json({ status: 'ok' }));
 app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
 app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
