@@ -47,7 +47,7 @@ export function encodeAuditCursor(cursor: AuditCursor, filters: AuditFilters): s
 function decodeAuditCursor(value: string, filters: AuditFilters): AuditCursor {
   try {
     const payload = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as CursorPayload;
-    if (payload.v !== 1 || payload.filter_hash !== filterHash(filters) || !isoDate.safeParse(payload.occurred_at).success || !uuid.safeParse(payload.event_id).success) throw new Error('invalid');
+    if (payload.v !== 1 || payload.filter_hash !== filterHash(filters) || !isoDate.safeParse(payload.occurred_at).success || new Date(payload.occurred_at).getTime() > Date.now() || !uuid.safeParse(payload.event_id).success) throw new Error('invalid');
     return { occurredAt: payload.occurred_at, eventId: payload.event_id };
   } catch { throw new AppError(400, 'VALIDATION_FAILED', 'The cursor is invalid.'); }
 }
