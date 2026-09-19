@@ -107,6 +107,9 @@ export function createOperatorReadRouter(readPort: ReadPort = unavailableReadPor
       const { result, filters } = parseQuery(req, options, 'list');
       const data = await readPort.listBusinesses({ filters, limit: result.limit, cursor: result.cursor ? decodeBusinessCursor(result.cursor, filters) : null, requestId: String(res.locals.requestId ?? 'unknown') });
       const parsed = z.object({ items: z.array(businessSummarySchema), next_cursor: z.object({ createdAt: isoDate, tenantId: uuid }).strict().nullable() }).strict().parse(data);
+      const now = Date.now();
+      if (parsed.items.some((item) => new Date(item.created_at).getTime() > now || new Date(item.updated_at).getTime() > now)) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.');
+      if (parsed.next_cursor && new Date(parsed.next_cursor.createdAt).getTime() > now) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.');
       const response = { items: parsed.items, next_cursor: parsed.next_cursor ? encodeBusinessCursor(parsed.next_cursor, filters) : null };
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope(response, String(res.locals.requestId ?? 'unknown')));
     } catch (error) { sendError(next, error); }
