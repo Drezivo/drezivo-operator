@@ -59,6 +59,9 @@ function result(value: unknown): RetryResult {
   if (!parsed.success) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service returned an invalid response.');
   return parsed.data;
 }
+async function commandCall<T>(call: () => Promise<T>): Promise<T> {
+  try { return await call(); } catch { throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'); }
+}
 function sendError(next: NextFunction, error: unknown): void {
   next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'));
 }
@@ -74,13 +77,15 @@ export function createOperatorRetryRouter(
   router.use(authorize);
   router.post('/jobs/:jobId/retry', permission(retryPermissions.job), async (req, res, next) => {
     try {
-      const data = result(await commandPort.retryJob({ ...body(req), jobId: resourceId(req.params.jobId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) }));
+      const input = { ...body(req), jobId: resourceId(req.params.jobId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) };
+      const data = result(await commandCall(() => commandPort.retryJob(input)));
       res.status(202).setHeader('Cache-Control', 'no-store').json(envelope(data, requestId(res)));
     } catch (error) { sendError(next, error); }
   });
   router.post('/notifications/:deliveryId/retry', permission(retryPermissions.notification), async (req, res, next) => {
     try {
-      const data = result(await commandPort.retryNotification({ ...body(req), deliveryId: resourceId(req.params.deliveryId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) }));
+      const input = { ...body(req), deliveryId: resourceId(req.params.deliveryId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) };
+      const data = result(await commandCall(() => commandPort.retryNotification(input)));
       res.status(202).setHeader('Cache-Control', 'no-store').json(envelope(data, requestId(res)));
     } catch (error) { sendError(next, error); }
   });

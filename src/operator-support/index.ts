@@ -75,6 +75,9 @@ function operatorSubject(res: Response): string {
   }
   return subject;
 }
+async function commandCall<T>(call: () => Promise<T>): Promise<T> {
+  try { return await call(); } catch { throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'); }
+}
 function sendError(next: NextFunction, error: unknown): void {
   next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'));
 }
@@ -89,7 +92,8 @@ export function createOperatorSupportGrantRouter(
   router.use(authorize);
   router.post('/support-grants', permissionMiddleware(supportGrantPermissions.create), async (req, res, next) => {
     try {
-      const result = projection(await commandPort.createSupportGrant({ ...body(req), operatorSubject: operatorSubject(res), idempotencyKey: headerValue(req, 'Idempotency-Key'), requestId: String(res.locals.requestId ?? 'unknown') }));
+      const input = { ...body(req), operatorSubject: operatorSubject(res), idempotencyKey: headerValue(req, 'Idempotency-Key'), requestId: String(res.locals.requestId ?? 'unknown') };
+      const result = projection(await commandCall(() => commandPort.createSupportGrant(input)));
       res.status(201).setHeader('Cache-Control', 'no-store').json(envelope(result, String(res.locals.requestId ?? 'unknown')));
     } catch (error) { sendError(next, error); }
   });
@@ -97,7 +101,8 @@ export function createOperatorSupportGrantRouter(
     try {
       const grantId = typeof req.params.grantId === 'string' ? req.params.grantId : '';
       if (!uuid.safeParse(grantId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The support grant identifier is invalid.');
-      const result = projection(await commandPort.revokeSupportGrant({ grantId, operatorSubject: operatorSubject(res), idempotencyKey: headerValue(req, 'Idempotency-Key'), requestId: String(res.locals.requestId ?? 'unknown') }));
+      const input = { grantId, operatorSubject: operatorSubject(res), idempotencyKey: headerValue(req, 'Idempotency-Key'), requestId: String(res.locals.requestId ?? 'unknown') };
+      const result = projection(await commandCall(() => commandPort.revokeSupportGrant(input)));
       res.setHeader('Cache-Control', 'no-store').json(envelope(result, String(res.locals.requestId ?? 'unknown')));
     } catch (error) { sendError(next, error); }
   });

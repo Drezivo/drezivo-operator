@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createOperatorSupportGrantRouter, type SupportGrantCommandPort } from '../src/operator-support/index.js';
+import { AppError } from '../src/errors.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const grantId = '650e8400-e29b-41d4-a716-446655440000';
@@ -17,4 +18,12 @@ describe('support grant command boundary', () => {
   it('validates revoke identifiers, permission scopes, and provider response shapes', async () => { const seen: string[] = []; const r = await request(app(port({ revokeSupportGrant: async ({ grantId: id, operatorSubject, idempotencyKey, requestId }) => { seen.push(`${id}:${operatorSubject}:${idempotencyKey}:${requestId}`); return { ...projection, revoked_at: '2026-01-01T12:00:00Z' }; } }))).post(`/api/v1/support-grants/${grantId}/revoke`).set('Idempotency-Key', key); expect(r.status).toBe(200); expect(seen).toEqual([`${grantId}:user_operator:${key}:req`]); const malformed = port({ createSupportGrant: async () => ({ ...projection, tenant_id: 'secret' }) }); expect((await request(app(malformed)).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).status).toBe(503); expect((await request(app(port())).post('/api/v1/support-grants/not-uuid/revoke').set('Idempotency-Key', key)).body.error.code).toBe('VALIDATION_FAILED'); });
   it('fails closed when command service is unavailable and enforces permissions', async () => { expect((await request(app({ createSupportGrant: async () => { throw new Error('down'); }, revokeSupportGrant: async () => { throw new Error('down'); } })).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).body.error.code).toBe('DEPENDENCY_UNAVAILABLE'); const seen: string[] = []; const denied = app(port(), (name) => { seen.push(name); return (_req, _res, next) => next(Object.assign(new Error(), { status: 403, code: 'FORBIDDEN', message: 'denied' })); }); expect((await request(denied).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).status).toBe(403); expect(seen).toEqual(['support.grant.create', 'support.grant.revoke']); });
   it('requires the verified operator context before calling the command port', async () => { let called = false; const p = port({ createSupportGrant: async () => { called = true; return projection; } }); const response = await request(app(p, undefined, false)).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input); expect(response.status).toBe(403); expect(called).toBe(false); });
+  it('redacts provider AppError details while preserving local validation errors', async () => {
+    const response = await request(app(port({ createSupportGrant: async () => { throw new AppError(500, 'SQL_ERROR', 'clerk secret and SQL details'); } }))).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input);
+    expect(response.status).toBe(503);
+    expect(response.body.error).toEqual({ code: 'DEPENDENCY_UNAVAILABLE', message: 'The business command service is unavailable.' });
+    expect(JSON.stringify(response.body)).not.toContain('clerk secret and SQL details');
+    const invalid = await request(app(port())).post('/api/v1/support-grants').set('Idempotency-Key', key).send({ ...input, expires_at: input.starts_at });
+    expect(invalid.body.error).toEqual({ code: 'VALIDATION_FAILED', message: 'The support grant request is invalid.' });
+  });
 });

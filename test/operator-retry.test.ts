@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createOperatorRetryRouter, type OperationsRetryCommandPort } from '../src/operator-retry/index.js';
+import { AppError } from '../src/errors.js';
 
 const jobId = '550e8400-e29b-41d4-a716-446655440000';
 const deliveryId = '650e8400-e29b-41d4-a716-446655440000';
@@ -33,5 +34,13 @@ describe('operations retry command boundary', () => {
     expect((await request(app(port(), undefined, false)).post(`/api/v1/jobs/${jobId}/retry`).set('Idempotency-Key', key).send(reason)).status).toBe(403);
     expect((await request(app({ retryJob: async () => { throw new Error('secret provider token'); }, retryNotification: async () => { throw new Error('down'); } })).post(`/api/v1/jobs/${jobId}/retry`).set('Idempotency-Key', key).send(reason)).body.error).toEqual({ code: 'DEPENDENCY_UNAVAILABLE', message: 'The business command service is unavailable.' });
     const malformed = port({ retryNotification: async () => ({ ...result('notification.retry', deliveryId), provider_token: 'secret' } as never) }); const response = await request(app(malformed)).post(`/api/v1/notifications/${deliveryId}/retry`).set('Idempotency-Key', key).send(reason); expect(response.status).toBe(503); expect(JSON.stringify(response.body)).not.toContain('secret');
+  });
+  it('redacts provider AppError details while preserving local validation errors', async () => {
+    const response = await request(app(port({ retryJob: async () => { throw new AppError(500, 'SQL_ERROR', 'postgres password secret'); } }))).post(`/api/v1/jobs/${jobId}/retry`).set('Idempotency-Key', key).send(reason);
+    expect(response.status).toBe(503);
+    expect(response.body.error).toEqual({ code: 'DEPENDENCY_UNAVAILABLE', message: 'The business command service is unavailable.' });
+    expect(JSON.stringify(response.body)).not.toContain('postgres password secret');
+    const invalid = await request(app(port())).post(`/api/v1/jobs/${jobId}/retry`).set('Idempotency-Key', key).send({ reason: '' });
+    expect(invalid.body.error).toEqual({ code: 'VALIDATION_FAILED', message: 'The retry request is invalid.' });
   });
 });
