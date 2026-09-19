@@ -1,6 +1,6 @@
 # Support grant command boundary
 
-**Status:** Proposed contract, documentation only
+**Status:** Fail-closed route boundary mounted; business command integration remains blocked
 **Scope:** Internal operator API commands delegated to the business API
 
 ## Purpose
@@ -8,6 +8,8 @@
 Support grants give an authorized Drezivo operator temporary access to one tenant. They are a narrow authorization mechanism, not impersonation, a tenant membership, or a general administrator bypass. The business API and shared Neon schema remain authoritative for grant state, tenant ownership, and audit persistence.
 
 This document defines the boundary for the future operator commands. It does not authorize a route implementation, a new operator table, or a database migration.
+
+The typed route boundary is now mounted under `/api/v1` with the unavailable command port and the shared Clerk, rate-limit, request-ID, no-store, and error middleware. It remains deliberately fail closed until the business API owners approve the internal command paths, authentication, response contract, authorization source, and integration tests described below.
 
 ## Planned commands
 
