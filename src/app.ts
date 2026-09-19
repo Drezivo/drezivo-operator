@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
-import { clerkContextMiddleware, errorHandler, requestId, requireOperator } from './middleware.js';
+import { clerkContextMiddleware, errorHandler, notFound, requestId, requireOperator } from './middleware.js';
 import { createOperatorReadRouter, unavailableReadPort } from './operator-read/index.js';
 import { createOperatorBillingRouter, unavailableBillingReadPort } from './operator-billing/index.js';
 import { createOperatorAuditRouter, unavailableAuditPort } from './operator-audit/index.js';
@@ -29,6 +29,7 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
   app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator()));
   app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator()));
   app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
+  app.use(notFound);
   app.use(errorHandler);
   return app;
 }

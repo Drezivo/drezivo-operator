@@ -19,6 +19,10 @@ export function requestId(req: Request, res: Response, next: NextFunction): void
 
 export { clerkContextMiddleware, requireOperator };
 
+export function notFound(_req: Request, _res: Response, next: NextFunction): void {
+  next(new AppError(404, 'NOT_FOUND', 'The requested resource was not found.'));
+}
+
 export function errorHandler(error: unknown, req: Request, res: Response, _next: NextFunction): void {
   res.setHeader('Cache-Control', 'no-store');
   const requestIdValue = String(res.locals.requestId || 'unknown');

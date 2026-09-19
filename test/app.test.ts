@@ -9,6 +9,18 @@ describe('operator API foundation', () => {
     expect(response.status).toBe(200);
     expect(response.headers['x-request-id']).toBeTruthy();
   });
+  it('returns the canonical envelope for unknown routes', async () => {
+    const response = await request(app).get('/unknown-route');
+
+    expect(response.status).toBe(404);
+    expect(response.headers['x-request-id']).toBeTruthy();
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body).toEqual({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'The requested resource was not found.' },
+      request_id: response.headers['x-request-id'],
+    });
+  });
   it('keeps public liveness and readiness available when Clerk auth is unavailable', async () => {
     const health = await request(app).get('/health');
     const readiness = await request(app).get('/ready');
