@@ -29,7 +29,7 @@ export type AuditEvent = z.infer<typeof auditEventSchema>;
 export type AuditFilters = { tenant_id?: string; actor_kind?: (typeof actorKinds)[number]; entity_type?: string; action?: string; outcome?: (typeof outcomes)[number]; occurred_from?: string; occurred_to?: string };
 export type AuditCursor = { occurredAt: string; eventId: string };
 export type AuditPort = {
-  listAuditEvents(input: { filters: AuditFilters; limit: number; cursor: AuditCursor | null }): Promise<{ items: AuditEvent[]; next_cursor: AuditCursor | null }>;
+  listAuditEvents(input: { filters: AuditFilters; limit: number; cursor: AuditCursor | null; requestId: string }): Promise<{ items: AuditEvent[]; next_cursor: AuditCursor | null }>;
 };
 
 export const unavailableAuditPort: AuditPort = {
@@ -75,7 +75,7 @@ export function createOperatorAuditRouter(auditPort: AuditPort = unavailableAudi
   router.get('/audit-events', permissionMiddleware(auditPermission), async (req, res, next) => {
     try {
       const { filters, limit, cursor } = parseQuery(req, options);
-      const data = await auditPort.listAuditEvents({ filters, limit, cursor: cursor ? decodeAuditCursor(cursor, filters) : null });
+      const data = await auditPort.listAuditEvents({ filters, limit, cursor: cursor ? decodeAuditCursor(cursor, filters) : null, requestId: String(res.locals.requestId ?? 'unknown') });
       const parsed = z.object({ items: z.array(auditEventSchema), next_cursor: z.object({ occurredAt: isoDate, eventId: uuid }).strict().nullable() }).strict().parse(data);
       if (parsed.items.some((item) => new Date(item.occurred_at).getTime() > Date.now()) || (parsed.next_cursor && new Date(parsed.next_cursor.occurredAt).getTime() > Date.now())) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The audit read service is unavailable.');
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope({ items: parsed.items, next_cursor: parsed.next_cursor ? encodeAuditCursor(parsed.next_cursor, filters) : null }, String(res.locals.requestId ?? 'unknown')));

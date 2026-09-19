@@ -1,6 +1,6 @@
 # Read-only operator audit-event design
 
-**Status:** Proposed for review  
+**Status:** Typed adapter implemented; route remains on the fail-closed unavailable port until approved live configuration is mounted
 **Scope:** Safe, cursor-paginated audit-event search  
 **Database impact:** None. This design adds no operator table, migration, index, cache, or replicated record.
 
@@ -68,7 +68,8 @@ The route owns authentication, authorization, query validation, filter normaliza
 | Missing identity or inactive membership | `401 UNAUTHENTICATED` |
 | Missing permission or scope | `403 FORBIDDEN` |
 | Timeout, connection failure, upstream `5xx`, unexpected upstream `401`, `403`, or `404` | `503 DEPENDENCY_UNAVAILABLE` |
-| Malformed, extra-field, privacy-unsafe, or contradictory response | `503 DEPENDENCY_UNAVAILABLE` |
+| Malformed, non-JSON, extra-field, privacy-unsafe, or contradictory successful response | `503 DEPENDENCY_INVALID_RESPONSE` |
+| Service-auth callback failure or invalid service credential | `503 OPERATOR_AUTH_UNAVAILABLE` |
 | Unexpected adapter exception | `503 DEPENDENCY_UNAVAILABLE` |
 
 A dependency failure never becomes an empty page, partial page, or guessed event. Error messages do not disclose whether a protected tenant or event exists, upstream URLs, SQL, credentials, response bodies, or stack traces. Logs contain only request ID, route, result class, latency, and an approved operator subject hash.
@@ -78,6 +79,12 @@ A dependency failure never becomes an empty page, partial page, or guessed event
 Audit events are immutable security history. Runtime operator credentials have no update or delete path. Retention and any privacy-request treatment follow the approved business retention schedule and legal review; this read contract does not shorten, rewrite, or export that history. Audit access itself is attributable in the business audit trail without recursively returning raw request data.
 
 The operator API does not infer events from frontend state, caches, Clerk claims, or local copies. If the authoritative source is unavailable or inconsistent, it returns the mapped dependency error. Direct Neon access, a new operator migration, event replication, mutation, export, or a new permission requires a separate design and review.
+
+## Internal transport adapter
+
+The typed audit read adapter uses the shared `InternalServiceClient`. The only allowlisted upstream path is `GET /internal/operator/v1/audit-events`. Query filters, limit, and the normalized cursor tuple are encoded as allowlisted parameters after local validation. The adapter forwards the validated request ID as `X-Request-ID` and obtains the internal service credential from the injected service-auth callback for `Authorization`. Browser cookies, arbitrary incoming headers, raw Clerk tokens, client-supplied URLs, SQL fragments, and provider payloads are never forwarded.
+
+The shared client enforces HTTPS by default, bounded response size, timeout, JSON handling, and redirect rejection. The adapter requires a successful JSON Drezivo envelope with `success: true`, then strictly validates the exact audit projection and cursor. Unknown fields, malformed envelopes, unsafe redacted summaries, invalid identifiers or timestamps, contradictory future values, non-JSON responses, and oversized responses fail closed. The application currently mounts the unavailable port; live mounting requires an approved business-service base URL, service-auth provider, source contract, and deployment configuration.
 
 ## Approval gates
 
