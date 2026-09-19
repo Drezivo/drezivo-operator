@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { app } from '../src/app.js';
+import { app, createApp } from '../src/app.js';
+import { createRateLimitMiddleware } from '../src/rate-limit.js';
 
 describe('operator API foundation', () => {
   it('reports health with a request id', async () => {
@@ -16,6 +17,16 @@ describe('operator API foundation', () => {
     expect(health.body).toEqual({ status: 'ok' });
     expect(readiness.status).toBe(200);
     expect(readiness.body).toEqual({ status: 'ready' });
+  });
+  it('keeps public probes unthrottled while protected routes are rate limited', async () => {
+    const isolatedApp = createApp(createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }));
+    expect((await request(isolatedApp).get('/health')).status).toBe(200);
+    expect((await request(isolatedApp).get('/ready')).status).toBe(200);
+    expect((await request(isolatedApp).get('/operator/health')).status).toBe(401);
+    const limited = await request(isolatedApp).get('/operator/health');
+    expect(limited.status).toBe(429);
+    expect(limited.headers['retry-after']).toBeTruthy();
+    expect(limited.body.error.code).toBe('RATE_LIMITED');
   });
   it('fails closed for protected routes', async () => {
     const response = await request(app).get('/operator/health');

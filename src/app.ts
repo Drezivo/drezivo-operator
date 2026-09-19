@@ -8,21 +8,29 @@ import { createOperatorDirectoryRouter, unavailableOperatorDirectoryPort } from 
 import { createOperatorSupportActivityRouter, unavailableSupportActivityPort } from './operator-support-activity/index.js';
 import { isProcessReady } from './process-lifecycle.js';
 import { createOperatorOperationsRouter, unavailableOperationsPort } from './operator-operations/index.js';
+import { createRateLimitMiddleware } from './rate-limit.js';
 
-export const app = express();
-app.disable('x-powered-by');
-app.use(helmet());
-app.use(requestId);
-app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
-app.get('/ready', (_req, res) => res.status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
+export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
+  const app = express();
+  app.disable('x-powered-by');
+  app.use(helmet());
+  app.use(requestId);
+  app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+  app.get('/ready', (_req, res) => res.status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
 
-app.use(clerkContextMiddleware());
-app.use(express.json({ limit: '1mb' }));
-app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.status(200).json({ status: 'ok' }));
-app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
-app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
-app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator()));
-app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator()));
-app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator()));
-app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
-app.use(errorHandler);
+  app.use('/operator', protectedRateLimit);
+  app.use('/api/v1', protectedRateLimit);
+  app.use(clerkContextMiddleware());
+  app.use(express.json({ limit: '1mb' }));
+  app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.status(200).json({ status: 'ok' }));
+  app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
+  app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
+  app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator()));
+  app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator()));
+  app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator()));
+  app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
+  app.use(errorHandler);
+  return app;
+}
+
+export const app = createApp();

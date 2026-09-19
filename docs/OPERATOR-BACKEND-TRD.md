@@ -23,6 +23,8 @@ Use one explicit internal operator boundary. The initial deployment may use a de
 
 Every protected request must have a valid Clerk token, active internal membership, and a Drezivo permission decision. Tenant-facing memberships do not grant operator access. Support grants add narrowly scoped, expiring tenant permissions and never replace operator authorization.
 
+Authentication and protected operator requests pass through one shared, bounded rate limiter before route authorization. The default implementation is injectable in-process storage with conservative limits and generic `429 RATE_LIMITED` responses plus `Retry-After`; `/health` and `/ready` remain unthrottled. Production deployments must provide a distributed rate-limit store so limits hold across replicas and restarts. The limiter must never log raw tokens or client IP addresses.
+
 ## Data and migrations
 
 No second tenant database is introduced in this foundation. Neon remains shared with the business system. The operator API must use controlled read models or internal API commands. Any operator-only table requires a separate migration review, ownership decision, least-privilege role, retention rule, and integration tests.
