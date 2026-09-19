@@ -9,6 +9,7 @@ import { createOperatorSupportActivityRouter, unavailableSupportActivityPort } f
 import { isProcessReady } from './process-lifecycle.js';
 import { createOperatorOperationsRouter, unavailableOperationsPort } from './operator-operations/index.js';
 import { createOperatorSupportGrantRouter, unavailableSupportGrantCommandPort } from './operator-support/index.js';
+import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from './operator-retry/index.js';
 import { createRateLimitMiddleware } from './rate-limit.js';
 
 export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
@@ -31,6 +32,7 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
   app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator()));
   app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
   app.use('/api/v1', createOperatorSupportGrantRouter(unavailableSupportGrantCommandPort, requireOperator()));
+  app.use('/api/v1', createOperatorRetryRouter(unavailableOperationsRetryCommandPort, requireOperator()));
   app.use(notFound);
   app.use(errorHandler);
   return app;

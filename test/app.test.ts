@@ -111,6 +111,14 @@ describe('operator API foundation', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
+  it('protects operations retry command routes before the unavailable command port', async () => {
+    const response = await request(app)
+      .post('/api/v1/jobs/550e8400-e29b-41d4-a716-446655440000/retry')
+      .send({ reason: 'Investigate failed processing' });
+    expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
   it('rejects invalid request IDs', async () => {
     const response = await request(app).get('/health').set('x-request-id', 'bad id');
     expect(response.status).toBe(400);

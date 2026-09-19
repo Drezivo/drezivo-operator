@@ -1,12 +1,14 @@
 # Operations retry command design
 
-**Status:** Proposed contract for review
+**Status:** Fail-closed route boundary mounted; business command integration remains blocked
 **Scope:** Operator initiated retry of an existing job or notification delivery
 **Database impact:** None in this repository. The business API remains the only owner of source records, idempotency, outbox writes, leases, and audit persistence.
 
 ## Purpose
 
 This contract describes how an authorized operator may ask the business platform to retry one recorded background operation. It is a command boundary, not a second worker and not a direct database action. The operator API must never change `outbox_event` or `notification_delivery` itself.
+
+The typed retry route boundary is mounted under `/api/v1` with the unavailable command port and shared authentication, rate-limit, request-ID, no-store, and error middleware. It remains deliberately fail closed until the business API owners approve the command paths, authorization source, state-transition contract, and integration tests described below.
 
 Retry means a new, auditable processing intent evaluated by the business system. It does not mean forcing a status, clearing a lease, incrementing an attempt counter in the operator service, or sending a notification directly. The business system decides whether the source state, deduplication key, reservation or template version, provider state, and retry policy permit the operation.
 
