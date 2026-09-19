@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import helmet from 'helmet';
-import { clerkContextMiddleware, errorHandler, notFound, requestId, requireOperator } from './middleware.js';
+import { clerkContextMiddleware, errorHandler, noStore, notFound, requestId, requireOperator } from './middleware.js';
 import { createOperatorReadRouter, unavailableReadPort } from './operator-read/index.js';
 import { createOperatorBillingRouter, unavailableBillingReadPort } from './operator-billing/index.js';
 import { createOperatorAuditRouter, unavailableAuditPort } from './operator-audit/index.js';
@@ -18,8 +18,8 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
   app.get('/health', (_req, res) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
   app.get('/ready', (_req, res) => res.set('Cache-Control', 'no-store').status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
 
-  app.use('/operator', protectedRateLimit);
-  app.use('/api/v1', protectedRateLimit);
+  app.use('/operator', noStore, protectedRateLimit);
+  app.use('/api/v1', noStore, protectedRateLimit);
   app.use(clerkContextMiddleware());
   app.use(express.json({ limit: '1mb' }));
   app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));

@@ -65,7 +65,14 @@ describe('operator API foundation', () => {
   it('protects the read-only operator API routes', async () => {
     const response = await request(app).get('/api/v1/overview');
     expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
+  });
+  it('applies no-store to unknown protected API routes centrally', async () => {
+    const response = await request(app).get('/api/v1/unknown-route');
+
+    expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
   });
   it('protects the billing read routes', async () => {
     const subscriptions = await request(app).get('/api/v1/subscriptions');

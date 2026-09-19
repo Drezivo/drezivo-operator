@@ -5,6 +5,11 @@ import { clerkContextMiddleware, requireOperator } from './operator-auth.js';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
+export function noStore(_req: Request, res: Response, next: NextFunction): void {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+}
+
 export function requestId(req: Request, res: Response, next: NextFunction): void {
   const supplied = req.header('x-request-id');
   if (supplied !== undefined && !REQUEST_ID_PATTERN.test(supplied)) {
