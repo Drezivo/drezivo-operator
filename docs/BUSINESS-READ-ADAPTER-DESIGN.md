@@ -1,6 +1,6 @@
 # Business read adapter integration
 
-**Status:** Implemented adapter boundary, not mounted with live configuration
+**Status:** Environment-configured business read adapter mounted; absent configuration remains fail closed
 **Scope:** Operator overview and business read projections
 
 ## Purpose
@@ -34,3 +34,5 @@ The operator read router still owns request validation, permission hooks, respon
 ## Production gates
 
 Before mounting a live adapter, approve the base URL, service authentication rotation, endpoint allowlist, request timeout, upstream status mapping, and integration tests against the business API contract. The application remains fail closed while the adapter is not wired with approved configuration.
+
+The application now mounts this adapter only when both `INTERNAL_SERVICE_BASE_URL` and `INTERNAL_SERVICE_AUTH` are configured. Other projections remain on their unavailable ports until their contracts and configuration are approved.
