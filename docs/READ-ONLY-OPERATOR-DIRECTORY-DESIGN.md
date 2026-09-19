@@ -1,6 +1,6 @@
 # Read-only operator directory design
 
-**Status:** Proposed for review
+**Status:** Typed adapter implemented; route remains on the fail-closed unavailable port until approved live configuration is mounted
 **Scope:** Safe, cursor-paginated Admin Team directory
 **Database impact:** None. This design adds no operator table, migration, index, cache, or replicated identity record.
 
@@ -50,7 +50,7 @@ The adapter validates the approved opaque-ID format, timestamp format, nonnegati
 
 ## Ownership and adapter boundary
 
-The route owns authentication, authorization, query validation, filter normalization, cursor encoding, response envelopes, request IDs, and no-store headers. A typed adapter receives normalized filters and server-resolved scope only. It receives no Express request, raw query string, browser role, bearer token, arbitrary URL, SQL fragment, or provider payload.
+The route owns authentication, authorization, query validation, filter normalization, cursor encoding, response envelopes, request IDs, and no-store headers. A typed adapter receives only normalized filters, the decoded cursor, the limit, and the request ID. Scope and authorization decisions remain in the route boundary; they are not adapter input fields. It receives no Express request, raw query string, browser role, bearer token, arbitrary URL, SQL fragment, or provider payload.
 
 Clerk is an identity and organization-membership provider. Drezivo owns the operator role and status decision. If the authoritative operator record cannot be read or reconciled with the verified provider identity, the request fails closed.
 
@@ -62,7 +62,8 @@ Clerk is an identity and organization-membership provider. Drezivo owns the oper
 | Missing, expired, or inactive identity | `401 UNAUTHENTICATED` |
 | Missing `operator.directory.read` or scope | `403 FORBIDDEN` |
 | Timeout, connection failure, upstream failure, or unreconciled identity | `503 DEPENDENCY_UNAVAILABLE` |
-| Malformed, extra-field, future, or privacy-unsafe response | `503 DEPENDENCY_UNAVAILABLE` |
+| Malformed, non-JSON, extra-field, future, or privacy-unsafe successful response | `503 DEPENDENCY_INVALID_RESPONSE` |
+| Service-auth callback failure or invalid service credential | `503 OPERATOR_AUTH_UNAVAILABLE` |
 
 A dependency failure must never become an empty or partial page. Errors must not disclose protected operator existence, provider details, SQL, credentials, or raw response data.
 
@@ -80,6 +81,14 @@ There is no database change. The operator API creates no directory mirror, cache
 6. What cursor tuple and tie-breaker are guaranteed by the source?
 
 The route factory remains unmounted until these questions and the typed source contract are approved.
+
+## Internal transport adapter
+
+The typed operator-directory adapter uses the shared `InternalServiceClient`. The only allowlisted upstream path is `GET /internal/operator/v1/operators`. Normalized `role`, `status`, `limit`, and cursor values are encoded as allowlisted query parameters. The cursor maps the route's `(last_activity_at, operator_id)` tuple to `cursor_last_activity_at` and `cursor_operator_id`; when `last_activity_at` is null, the adapter preserves that local cursor state and omits `cursor_last_activity_at` upstream while still sending `cursor_operator_id`.
+
+The adapter forwards the validated request ID as `X-Request-ID` and obtains the internal service credential from the injected service-auth callback for `Authorization`. It does not forward browser cookies, arbitrary incoming headers, raw Clerk tokens, client-supplied URLs, SQL fragments, or provider payloads. HTTPS, bounded response size, timeout, JSON handling, and redirect rejection are enforced by the shared client. The application remains on the unavailable port until the business source, service-auth provider, and deployment configuration are approved.
+
+Successful responses must be a JSON Drezivo envelope with `success: true`, followed by strict validation of the exact directory item and cursor projection. Unknown fields, malformed envelopes, unsafe identity fields, invalid opaque IDs, future timestamps, contradictory values, non-JSON responses, and oversized responses fail closed.
 
 ## Approval gates
 

@@ -24,7 +24,7 @@ export type OperatorDirectoryItem = z.infer<typeof operatorDirectoryItemSchema>;
 export type OperatorDirectoryFilters = { role?: typeof roles[number]; status?: typeof statuses[number] };
 export type OperatorDirectoryCursor = { lastActivityAt: string | null; operatorId: string };
 export type OperatorDirectoryPort = {
-  listOperators(input: { filters: OperatorDirectoryFilters; limit: number; cursor: OperatorDirectoryCursor | null }): Promise<{ items: OperatorDirectoryItem[]; next_cursor: OperatorDirectoryCursor | null }>;
+  listOperators(input: { filters: OperatorDirectoryFilters; limit: number; cursor: OperatorDirectoryCursor | null; requestId: string }): Promise<{ items: OperatorDirectoryItem[]; next_cursor: OperatorDirectoryCursor | null }>;
 };
 
 export const unavailableOperatorDirectoryPort: OperatorDirectoryPort = {
@@ -70,7 +70,7 @@ export function createOperatorDirectoryRouter(port: OperatorDirectoryPort = unav
   router.get('/operators', permission(operatorDirectoryPermission), async (req, res, next) => {
     try {
       const query = parseQuery(req);
-      const data = await port.listOperators({ filters: query.filters, limit: query.limit, cursor: query.cursor ? decodeCursor(query.cursor, query.filters) : null });
+      const data = await port.listOperators({ filters: query.filters, limit: query.limit, requestId: String(res.locals.requestId ?? 'unknown'), cursor: query.cursor ? decodeCursor(query.cursor, query.filters) : null });
       const parsed = z.object({ items: z.array(operatorDirectoryItemSchema), next_cursor: z.object({ lastActivityAt: iso.nullable(), operatorId: opaque }).strict().nullable() }).strict().parse(data);
       if (hasFutureData(parsed.items, parsed.next_cursor)) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator directory service is unavailable.');
       res.setHeader('Cache-Control', 'no-store');
