@@ -32,7 +32,11 @@ export const supportGrantProjectionSchema = z.object({
   expires_at: isoDate,
   revoked_at: isoDate.nullable(),
   created_at: isoDate,
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (new Set(value.permission_codes).size !== value.permission_codes.length) {
+    ctx.addIssue({ code: 'custom', path: ['permission_codes'], message: 'Permission codes must be unique.' });
+  }
+});
 export type SupportGrantCreateInput = z.infer<typeof supportGrantCreateInputSchema>;
 export type SupportGrantProjection = z.infer<typeof supportGrantProjectionSchema>;
 
