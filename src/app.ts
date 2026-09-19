@@ -11,8 +11,9 @@ import { createOperatorOperationsRouter, unavailableOperationsPort } from './ope
 import { createOperatorSupportGrantRouter, unavailableSupportGrantCommandPort } from './operator-support/index.js';
 import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from './operator-retry/index.js';
 import { createRateLimitMiddleware } from './rate-limit.js';
+import { createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from './operator-authorization.js';
 
-export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
+export function createApp(protectedRateLimit = createRateLimitMiddleware(), authorizationPort: AuthorizationPort = denyAuthorizationPort) {
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
@@ -25,14 +26,15 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
   app.use(clerkContextMiddleware());
   app.use(express.json({ limit: '1mb' }));
   app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
-  app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
-  app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
-  app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator()));
-  app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator()));
-  app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator()));
-  app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator()));
-  app.use('/api/v1', createOperatorSupportGrantRouter(unavailableSupportGrantCommandPort, requireOperator()));
-  app.use('/api/v1', createOperatorRetryRouter(unavailableOperationsRetryCommandPort, requireOperator()));
+  const permissionMiddleware = createPermissionMiddleware(authorizationPort);
+  app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorSupportGrantRouter(unavailableSupportGrantCommandPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorRetryRouter(unavailableOperationsRetryCommandPort, requireOperator(), { permissionMiddleware }));
   app.use(notFound);
   app.use(errorHandler);
   return app;

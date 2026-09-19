@@ -127,6 +127,12 @@ Before implementation or live adapter mounting, business, security, and privacy 
 9. Required audit access logging and whether the read itself creates a separate audit event.
 10. Sequential, concurrent, scope-leakage, malformed-response, and redaction tests for the approved contract.
 
+## Authorization decision
+
+The operator repository now defines a versioned, injected authorization port (`operator-authorization.v1`) with explicit roles, permission codes, active-membership decisions, and tenant-scope decisions. The default remains deny-all. The business/security owners still need to provide the authoritative resolver implementation, freshness/revocation behavior, scope assignment source, and audit requirements. This decision does not add a local table or authorize client claims.
+
+The port is intentionally replaceable: a reviewed business-backed adapter can be injected without changing route schemas or permission middleware.
+
 ## Repository boundary
 
 This register causes **no database change** in `Drezivo-Operator-API`. Do not add a mirror table, cache, migration, direct Neon query, local audit copy, or guessed adapter endpoint to resolve these gaps. Any required schema change belongs to the business system's reviewed migration process and must document ownership, RLS, retention, rollout, and rollback or forward-fix behavior. The operator repository may add a typed adapter only after the decisions above are recorded in an approved contract.
