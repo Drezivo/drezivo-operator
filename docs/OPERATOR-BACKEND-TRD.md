@@ -7,7 +7,7 @@
 
 The operator API is an Express and TypeScript REST service. It is a control-plane boundary between the internal operator web app and the business platform. The dependency direction is route validation and authorization, application service, controlled business command or read projection, then data access. HTTP handlers do not contain business rules or direct unrestricted tenant access.
 
-The API is versioned under `/api/v1`. The unauthenticated `/health` endpoint is a process liveness check that currently returns `{ "status": "ok" }`. It does not verify dependency readiness. Dependency readiness is deployment-managed and remains pending approved dependency wiring and health checks.
+The API is versioned under `/api/v1`. The unauthenticated `/health` endpoint is a process liveness check that returns `{ "status": "ok" }`. The unauthenticated `GET /ready` endpoint reports process readiness only: it returns `200` with `{ "status": "ready" }` while the process accepts traffic, and `503` with `{ "status": "draining" }` after shutdown begins. Neither endpoint checks Clerk, the business API, Neon, S3, or other dependency readiness. Dependency readiness remains deployment-managed and requires separately approved dependency health checks.
 
 ## Trust boundaries
 
@@ -82,7 +82,7 @@ The HTTP server must apply these process-level bounds:
 | `maxRequestsPerSocket` | 100 | Maximum requests served on one socket before it is rotated |
 | Graceful drain deadline | 10 seconds | Time after `SIGTERM` or `SIGINT` to finish in-flight work before forced connection close |
 
-On `SIGTERM` and `SIGINT`, the process must stop accepting new connections, allow in-flight requests to complete during the 10-second drain window, then force-close remaining connections and exit. Shutdown handlers must be idempotent and must not start new background work. The deployment or orchestrator must remove the instance from readiness before sending the shutdown signal; this server lifecycle slice does not expose or toggle readiness itself.
+On `SIGTERM` and `SIGINT`, the process must mark itself draining, stop accepting new connections, allow in-flight requests to complete during the 10-second drain window, then force-close remaining connections and exit. Shutdown handlers must be idempotent and must not start new background work. The deployment or orchestrator should remove the instance from service readiness before sending the shutdown signal, while the server's `GET /ready` response provides the process-level drain signal.
 
 These are process-level HTTP lifecycle bounds. They do not replace timeouts on the `InternalServiceClient`, database pool, Clerk, S3, provider, worker lease, or any other upstream dependency. Each dependency still needs its own bounded timeout and safe cancellation behavior. This lifecycle slice adds no database table, index, migration, connection, or data-retention change.
 

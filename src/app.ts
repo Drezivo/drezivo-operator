@@ -6,6 +6,7 @@ import { createOperatorBillingRouter, unavailableBillingReadPort } from './opera
 import { createOperatorAuditRouter, unavailableAuditPort } from './operator-audit/index.js';
 import { createOperatorDirectoryRouter, unavailableOperatorDirectoryPort } from './operator-directory/index.js';
 import { createOperatorSupportActivityRouter, unavailableSupportActivityPort } from './operator-support-activity/index.js';
+import { isProcessReady } from './process-lifecycle.js';
 import { createOperatorOperationsRouter, unavailableOperationsPort } from './operator-operations/index.js';
 
 export const app = express();
@@ -16,6 +17,7 @@ app.use(clerkContextMiddleware());
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
+app.get('/ready', (_req, res) => res.status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
 app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.status(200).json({ status: 'ok' }));
 app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
 app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
