@@ -17,7 +17,7 @@ export type InternalServiceClientOptions = {
   allowInsecureTransport?: boolean;
   maxResponseBytes?: number;
 };
-export type RequestJsonOptions = { requestId: string; method?: string; body?: unknown };
+export type RequestJsonOptions = { requestId: string; method?: string; body?: unknown; headers?: Record<string, string> };
 export type JsonResponse<T> = { status: number; data: T | null };
 
 function timeout(value: number | undefined): number {
@@ -82,6 +82,8 @@ export class InternalServiceClient {
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const headers: Record<string, string> = { Accept: 'application/json', 'X-Request-ID': request.requestId, Authorization: auth };
+      if (request.headers && Object.entries(request.headers).some(([key, value]) => !/^[A-Za-z0-9-]+$/.test(key) || typeof value !== 'string' || value.trim() === '' || /[\r\n]/.test(value))) throw dependencyError();
+      Object.assign(headers, request.headers);
       if (request.body !== undefined) headers['Content-Type'] = 'application/json';
       const response = await this.fetchImpl(url, { method, headers, body: request.body === undefined ? undefined : JSON.stringify(request.body), redirect: 'error', signal: controller.signal });
       const text = await readBounded(response, this.maxResponseBytes);
