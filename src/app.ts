@@ -14,6 +14,10 @@ import { createRateLimitMiddleware } from './rate-limit.js';
 import { createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from './operator-authorization.js';
 import { config, isInternalServiceConfigured } from './config.js';
 import { createBusinessReadAdapter } from './integrations/business-read/index.js';
+import { createBillingReadAdapter } from './integrations/billing-read/index.js';
+import { createAuditReadAdapter } from './integrations/audit-read/index.js';
+import { createOperationsReadAdapter } from './integrations/operations-read/index.js';
+import { createDirectoryReadAdapter } from './integrations/directory-read/index.js';
 
 export function createApp(protectedRateLimit = createRateLimitMiddleware(), authorizationPort: AuthorizationPort = denyAuthorizationPort) {
   const app = express();
@@ -29,13 +33,18 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware(), auth
   app.use(express.json({ limit: '1mb' }));
   app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
   const permissionMiddleware = createPermissionMiddleware(authorizationPort);
-  const readPort = isInternalServiceConfigured() ? createBusinessReadAdapter({ baseUrl: config.INTERNAL_SERVICE_BASE_URL!, serviceAuth: () => config.INTERNAL_SERVICE_AUTH! }) : unavailableReadPort;
+  const serviceOptions = isInternalServiceConfigured() ? { baseUrl: config.INTERNAL_SERVICE_BASE_URL!, serviceAuth: () => config.INTERNAL_SERVICE_AUTH! } : null;
+  const readPort = serviceOptions ? createBusinessReadAdapter(serviceOptions) : unavailableReadPort;
+  const billingPort = serviceOptions ? createBillingReadAdapter(serviceOptions) : unavailableBillingReadPort;
+  const auditPort = serviceOptions ? createAuditReadAdapter(serviceOptions) : unavailableAuditPort;
+  const operationsPort = serviceOptions ? createOperationsReadAdapter(serviceOptions) : unavailableOperationsPort;
+  const directoryPort = serviceOptions ? createDirectoryReadAdapter(serviceOptions) : unavailableOperatorDirectoryPort;
   app.use('/api/v1', createOperatorReadRouter(readPort, requireOperator(), { permissionMiddleware }));
-  app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator(), { permissionMiddleware }));
-  app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator(), { permissionMiddleware }));
-  app.use('/api/v1', createOperatorDirectoryRouter(unavailableOperatorDirectoryPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorBillingRouter(billingPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorAuditRouter(auditPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorDirectoryRouter(directoryPort, requireOperator(), { permissionMiddleware }));
   app.use('/api/v1', createOperatorSupportActivityRouter(unavailableSupportActivityPort, requireOperator(), { permissionMiddleware }));
-  app.use('/api/v1', createOperatorOperationsRouter(unavailableOperationsPort, requireOperator(), { permissionMiddleware }));
+  app.use('/api/v1', createOperatorOperationsRouter(operationsPort, requireOperator(), { permissionMiddleware }));
   app.use('/api/v1', createOperatorSupportGrantRouter(unavailableSupportGrantCommandPort, requireOperator(), { permissionMiddleware }));
   app.use('/api/v1', createOperatorRetryRouter(unavailableOperationsRetryCommandPort, requireOperator(), { permissionMiddleware }));
   app.use(notFound);
