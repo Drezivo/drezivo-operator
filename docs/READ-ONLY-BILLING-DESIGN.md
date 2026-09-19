@@ -1,6 +1,6 @@
 # Read-only billing and entitlement design
 
-**Status:** Proposed for review  
+**Status:** Typed adapter implemented; routes remain on the fail-closed unavailable port until approved live configuration is mounted
 **Scope:** Operator subscription list and effective entitlement detail  
 **Database impact:** None. This design adds no operator tables, indexes, migrations, or replicated records.
 
@@ -11,6 +11,8 @@ Billing operators need a narrow view of subscription state and the capabilities 
 This design defines the operator-facing read contract and adapter boundary. It does not assert that a business API endpoint, transport credential, or deployment URL already exists. An approved business read projection or reviewed read-only query path must be available before implementation.
 
 The operator API must not become a billing database, payment console, or unrestricted customer browser. It must not write subscriptions, plans, entitlements, prices, overrides, invoices, payment methods, or provider records.
+
+The typed billing read adapter is implemented and validates the business-service envelope and billing projections. The application currently mounts the fail-closed unavailable port. Live mounting requires an approved business-service base URL, service-auth provider, source contract, and deployment configuration; this design does not claim that production business connectivity is enabled.
 
 ## Authorization
 
@@ -83,6 +85,17 @@ Treat every downstream response as untrusted. Validate HTTP status, content type
 
 The business API and Neon remain the sole authority. This repository adds no direct Neon connection, operator migration, subscription mirror, entitlement cache, or denormalized billing table. Any reviewed read-only query alternative must remain behind the adapter and receive separate data-access approval.
 
+## Internal transport adapter
+
+The adapter uses the shared `InternalServiceClient`. It forwards the validated request ID as `X-Request-ID` and obtains the internal service credential from the injected service-auth callback for `Authorization`. Browser cookies, arbitrary incoming headers, raw Clerk tokens, and client-supplied URLs are not forwarded. HTTPS, bounded response size, timeout, and redirect rejection are enforced by the shared client; insecure HTTP is permitted only for an explicit local-test configuration.
+
+The exact allowlisted business-service paths are:
+
+- `GET /internal/operator/v1/subscriptions`
+- `GET /internal/operator/v1/businesses/:tenantId/entitlements`
+
+Subscription filters and the normalized cursor tuple are encoded as allowlisted query parameters. The entitlement tenant UUID is inserted only after route validation. The adapter accepts the approved `200` projection response and the approved `404` entitlement miss, mapping the latter to the route's safe `NOT_FOUND` result. It strictly validates the response envelope, subscription item, entitlement detail, UUIDs, timestamps, enums, counts, capabilities, and cursor. Unknown fields, excluded billing or provider data, malformed values, and contradictory responses fail closed.
+
 ## Failure mapping and privacy
 
 Use the existing response envelope and stable error codes:
@@ -94,18 +107,20 @@ Use the existing response envelope and stable error codes:
 | Missing read permission or scope | `403 FORBIDDEN` |
 | Valid entitlement detail miss | `404 NOT_FOUND` |
 | Timeout, connection failure, upstream `5xx`, or unavailable dependency | `503 DEPENDENCY_UNAVAILABLE` |
-| Upstream `401`, `403`, unexpected `404`, malformed response, extra field, or contradictory data | `503 DEPENDENCY_UNAVAILABLE` or a separately approved consistency error |
+| Upstream `401`, `403`, unexpected `404`, or other non-accepted status | `503 DEPENDENCY_UNAVAILABLE` |
+| Successful response is non-JSON, malformed, extra-field, or contradictory | `503 DEPENDENCY_INVALID_RESPONSE` |
+| Service-auth callback failure or invalid credential | `503 OPERATOR_AUTH_UNAVAILABLE` |
 | Unexpected adapter exception | `503 DEPENDENCY_UNAVAILABLE` |
 
 Do not turn a dependency failure into an empty list, partial entitlement result, or guessed status. Messages must not reveal SQL, upstream URLs, response bodies, credentials, provider details, or whether an unauthorized tenant exists. Logs contain only request ID, route, result class, latency, and an approved operator subject hash. Billing responses use `Cache-Control: no-store`.
 
 ## Approval gates
 
-Implementation requires all of the following:
+Live mounting and production use require all of the following:
 
 1. Business API owners approve the read source, subscription and entitlement schemas, plan and status allowlists, capability allowlist, authority, consistency behavior, and missing-record semantics. The capability allowlist is a pre-live gate because the current boundary validates nonempty strings but does not yet define unknown-capability rejection.
 2. Security and privacy reviewers approve `subscription.read` and `entitlement.read`, tenant scope, field exclusions, response validation, rate limits, logging, and secret handling.
-3. API maintainers approve adapter configuration, timeout behavior, cursor encoding, filter normalization, and stable failure mapping.
+3. API maintainers approve adapter configuration, exact internal paths, service authentication, timeout behavior, cursor encoding, filter normalization, strict response validation, and stable failure mapping.
 4. Tests prove strict unknown-field and excluded-field rejection, enum and cursor validation, filter-bound cursors, malformed and contradictory response handling, dependency failure mapping, and absence of direct Neon or migration dependency.
 5. The repository passes typecheck, lint, tests, build, and `git diff --check`. Production configuration and deployment require separate authorization.
 

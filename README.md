@@ -39,5 +39,6 @@ Environment variable names and deployment requirements are documented in `CONTRI
 - `docs/OPERATOR-SCOPE-BOUNDARY-DESIGN.md` defines the separate tenant-scope seam.
 - `docs/INTERNAL-SERVICE-CLIENT-DESIGN.md` defines the bounded business-service transport seam.
 - `docs/BUSINESS-READ-ADAPTER-DESIGN.md` defines the request-correlated read adapter boundary.
+- `docs/READ-ONLY-BILLING-DESIGN.md` and `docs/adr/0016-billing-read-adapter-transport.md` define the subscription and entitlement read adapter.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
