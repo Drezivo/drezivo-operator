@@ -1,11 +1,13 @@
 # Read-only support activity design
 
-**Status:** Contract proposal, pending source approval
+**Status:** Request-correlated route boundary implemented; transport adapter blocked pending source and wire-contract approval
 **Scope:** Backend read projection for the internal Support Activity view
 
 ## Purpose
 
 Support Activity gives an authorized operator a bounded history of actions performed under, or directly related to, a support grant. It is an audit projection, not a customer activity browser and not a second audit store. The business API and shared Neon schema remain authoritative.
+
+The route factory, request-ID correlation, authorization seam, query validation, cursor binding, response projection, and fail-closed route behavior are implemented. No transport adapter is mounted or claimed to be ready. The adapter remains blocked until the business source endpoint, authority, scope model, allowlists, redaction policy, and exact wire contract are approved.
 
 ## Route and permission
 
@@ -68,6 +70,10 @@ Errors and logs must not disclose tenant existence, raw upstream payloads, SQL, 
 ## Ownership and database impact
 
 This slice adds no local database, table, index, migration, cache, replica, audit write, export job, or direct Neon connection. The business API owns `audit_event` and `global_audit_event`, append-only retention, redaction, tenant isolation, and event semantics. The operator service consumes an approved typed read projection.
+
+## Transport status
+
+The route must remain on its unavailable adapter until the unresolved source questions below are answered. The eventual adapter input contract must explicitly define normalized filters, the decoded cursor, the limit, scope information, and the request ID before implementation. It must use an allowlisted internal path, propagate the request ID and approved service authentication, validate the response envelope and projection strictly, and map malformed or privacy-unsafe successful responses separately from transport failures. It must not connect directly to Neon or forward browser credentials.
 
 ## Unresolved source contract questions
 

@@ -34,7 +34,7 @@ export type SupportActivityFilters = {
 };
 export type SupportActivityCursor = { occurredAt: string; eventId: string };
 export type SupportActivityPort = {
-  listSupportActivity(input: { filters: SupportActivityFilters; limit: number; cursor: SupportActivityCursor | null }): Promise<{ items: SupportActivity[]; next_cursor: SupportActivityCursor | null }>;
+  listSupportActivity(input: { filters: SupportActivityFilters; limit: number; cursor: SupportActivityCursor | null; requestId: string }): Promise<{ items: SupportActivity[]; next_cursor: SupportActivityCursor | null }>;
 };
 
 export const unavailableSupportActivityPort: SupportActivityPort = {
@@ -84,7 +84,7 @@ export function createOperatorSupportActivityRouter(port: SupportActivityPort = 
   router.get('/support-activity', permissionMiddleware(supportActivityPermission), async (req, res, next) => {
     try {
       const { filters, limit, cursor } = parseQuery(req, options);
-      const data = await port.listSupportActivity({ filters, limit, cursor: cursor ? decodeCursor(cursor, filters) : null });
+      const data = await port.listSupportActivity({ filters, limit, requestId: String(res.locals.requestId ?? 'unknown'), cursor: cursor ? decodeCursor(cursor, filters) : null });
       const parsed = z.object({ items: z.array(supportActivitySchema), next_cursor: z.object({ occurredAt: isoDate, eventId: uuid }).strict().nullable() }).strict().parse(data);
       if (parsed.items.some((item) => new Date(item.occurred_at).getTime() > Date.now()) || (parsed.next_cursor && new Date(parsed.next_cursor.occurredAt).getTime() > Date.now())) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The support activity read service is unavailable.');
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope({ items: parsed.items, next_cursor: parsed.next_cursor ? encodeSupportActivityCursor(parsed.next_cursor, filters) : null }, String(res.locals.requestId ?? 'unknown')));

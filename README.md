@@ -42,5 +42,6 @@ Environment variable names and deployment requirements are documented in `CONTRI
 - `docs/READ-ONLY-BILLING-DESIGN.md` and `docs/adr/0016-billing-read-adapter-transport.md` define the subscription and entitlement read adapter.
 - `docs/READ-ONLY-AUDIT-DESIGN.md` and `docs/adr/0017-audit-read-adapter-transport.md` define the audit-event read adapter.
 - `docs/READ-ONLY-OPERATOR-DIRECTORY-DESIGN.md` and `docs/adr/0018-operator-directory-read-adapter-transport.md` define the Admin Team directory read adapter.
+- `docs/READ-ONLY-SUPPORT-ACTIVITY-DESIGN.md` defines the request-correlated support activity route and its blocked transport contract.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
