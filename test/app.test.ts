@@ -26,11 +26,13 @@ describe('operator API foundation', () => {
     const limited = await request(isolatedApp).get('/operator/health');
     expect(limited.status).toBe(429);
     expect(limited.headers['retry-after']).toBeTruthy();
+    expect(limited.headers['cache-control']).toBe('no-store');
     expect(limited.body.error.code).toBe('RATE_LIMITED');
   });
   it('fails closed for protected routes', async () => {
     const response = await request(app).get('/operator/health');
     expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
   it('rejects malformed authorization headers', async () => {
