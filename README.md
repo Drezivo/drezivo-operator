@@ -7,7 +7,8 @@ This service is a control plane for the internal operator web application. The b
 ## Current foundation
 
 - Express and TypeScript service
-- `GET /health` process health endpoint
+- `GET /health` liveness endpoint for the running process
+- `GET /ready` process readiness endpoint, returning `ready` with HTTP 200 during normal service and `draining` with HTTP 503 during shutdown; dependency readiness is tracked separately
 - request IDs and stable JSON error responses
 - closed-by-default operator route seam
 - security headers and bounded JSON parsing
