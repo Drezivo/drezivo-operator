@@ -31,6 +31,15 @@ describe('business read adapter', () => {
     await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', timeoutMs: 250, fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_UNAVAILABLE' });
   });
 
+  it('preserves service auth failures and does not make a request', async () => {
+    const fetchImpl = vi.fn(async () => response({ success: true, data: overview }));
+    const thrown = createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => { throw new Error('secret'); }, fetchImpl });
+    const invalid = createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => '', fetchImpl });
+    await expect(thrown.overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'OPERATOR_AUTH_UNAVAILABLE' });
+    await expect(invalid.overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'OPERATOR_AUTH_UNAVAILABLE' });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed downstream payloads without exposing details', async () => {
     const fetchImpl = vi.fn(async () => response({ success: true, data: { as_of: 'bad' } }));
     await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => 'Bearer internal', fetchImpl }).overview({ asOf: undefined, requestId: 'req-1' })).rejects.toMatchObject({ status: 503, code: 'DEPENDENCY_INVALID_RESPONSE', message: 'The business read service returned an invalid response.' });

@@ -41,6 +41,7 @@ export function createBusinessReadAdapter(options: BusinessReadAdapterOptions): 
     let response;
     try { response = await client.requestJsonResponse<unknown>(fullPath, { requestId }); }
     catch (error) {
+      if (error instanceof AppError && error.code === 'OPERATOR_AUTH_UNAVAILABLE') throw error;
       if (error instanceof AppError && error.code === 'DEPENDENCY_INVALID_RESPONSE') throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The business read service returned an invalid response.');
       throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.');
     }
