@@ -8,6 +8,7 @@ describe('operator API foundation', () => {
     const response = await request(app).get('/health');
     expect(response.status).toBe(200);
     expect(response.headers['x-request-id']).toBeTruthy();
+    expect(response.headers['cache-control']).toBe('no-store');
   });
   it('returns the canonical envelope for unknown routes', async () => {
     const response = await request(app).get('/unknown-route');
@@ -27,14 +28,18 @@ describe('operator API foundation', () => {
 
     expect(health.status).toBe(200);
     expect(health.body).toEqual({ status: 'ok' });
+    expect(health.headers['cache-control']).toBe('no-store');
     expect(readiness.status).toBe(200);
     expect(readiness.body).toEqual({ status: 'ready' });
+    expect(readiness.headers['cache-control']).toBe('no-store');
   });
   it('keeps public probes unthrottled while protected routes are rate limited', async () => {
     const isolatedApp = createApp(createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }));
     expect((await request(isolatedApp).get('/health')).status).toBe(200);
     expect((await request(isolatedApp).get('/ready')).status).toBe(200);
-    expect((await request(isolatedApp).get('/operator/health')).status).toBe(401);
+    const unauthenticated = await request(isolatedApp).get('/operator/health');
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.headers['cache-control']).toBe('no-store');
     const limited = await request(isolatedApp).get('/operator/health');
     expect(limited.status).toBe(429);
     expect(limited.headers['retry-after']).toBeTruthy();

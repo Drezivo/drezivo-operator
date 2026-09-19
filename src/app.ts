@@ -15,14 +15,14 @@ export function createApp(protectedRateLimit = createRateLimitMiddleware()) {
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(requestId);
-  app.get('/health', (_req, res) => res.status(200).json({ status: 'ok' }));
-  app.get('/ready', (_req, res) => res.status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
+  app.get('/health', (_req, res) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
+  app.get('/ready', (_req, res) => res.set('Cache-Control', 'no-store').status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
 
   app.use('/operator', protectedRateLimit);
   app.use('/api/v1', protectedRateLimit);
   app.use(clerkContextMiddleware());
   app.use(express.json({ limit: '1mb' }));
-  app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.status(200).json({ status: 'ok' }));
+  app.get('/operator/health', requireOperator(), (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
   app.use('/api/v1', createOperatorReadRouter(unavailableReadPort, requireOperator()));
   app.use('/api/v1', createOperatorBillingRouter(unavailableBillingReadPort, requireOperator()));
   app.use('/api/v1', createOperatorAuditRouter(unavailableAuditPort, requireOperator()));
