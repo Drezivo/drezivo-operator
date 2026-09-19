@@ -4,6 +4,20 @@ import { config } from './config.js';
 import { markProcessDraining, markProcessReady } from './process-lifecycle.js';
 
 export const serverLimits = { requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 100 } as const;
+export const shutdownDeadlineMs = 10_000;
+
+export function createShutdownHandler(server: http.Server, deadlineMs = shutdownDeadlineMs): () => void {
+  let stopping = false;
+  return () => {
+    if (stopping) return;
+    stopping = true;
+    markProcessDraining();
+    server.close();
+    const forceCloseTimer = setTimeout(() => server.closeAllConnections(), deadlineMs);
+    forceCloseTimer.unref();
+  };
+}
+
 export function createAppServer(): http.Server {
   const server = http.createServer(app);
   server.requestTimeout = serverLimits.requestTimeout;
@@ -14,8 +28,7 @@ export function createAppServer(): http.Server {
 }
 export function startServer(port = config.PORT): http.Server {
   const server = createAppServer();
-  let stopping = false;
-  const shutdown = () => { if (stopping) return; stopping = true; markProcessDraining(); server.close(); setTimeout(() => server.closeAllConnections(), 10_000).unref(); };
+  const shutdown = createShutdownHandler(server);
   process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
   server.listen(port, () => markProcessReady());
   return server;
