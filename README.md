@@ -49,4 +49,5 @@ For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process envi
 - `docs/BUSINESS-CONTRACT-GAP-REGISTER.md` records unresolved business data and wire-contract decisions blocking support activity integration.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
+- `docs/OPERATOR-GO-LIVE-CHECKLIST.md` is the one-time checklist to switch the operator MVP on for the first client businesses.
 - `docs/OPERATOR-TENANT-ADMIN-MVP.md` and `docs/adr/0025-operator-mvp-direct-tenant-admin.md` define the MVP business list, lock/unlock, staff suspension, trial and activation routes.

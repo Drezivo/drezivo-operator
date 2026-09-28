@@ -40,8 +40,8 @@ Create these Clerk organization roles with the exact role identifiers the API re
 | Clerk role identifier    | Current API access                                                                     |
 | ------------------------ | -------------------------------------------------------------------------------------- |
 | `org:read_only_operator` | Operator overview                                                                      |
-| `org:platform_operator`  | Operator overview                                                                      |
-| `org:support_operator`   | Operator overview                                                                      |
+| `org:platform_operator`  | Operator overview; Clients: view, lock/unlock, staff suspension, trial, mark paid, edit  |
+| `org:support_operator`   | Operator overview; Clients: view only                                                  |
 | `org:billing_operator`   | Operator overview and subscription reads                                               |
 | `org:platform_owner`     | All permissions currently implemented by the API, including operator-wide tenant scope |
 
