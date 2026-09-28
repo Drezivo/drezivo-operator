@@ -6,8 +6,8 @@ import { ApiError, apiRequest } from "@/lib/api";
 import { MutationGuard } from "@/lib/mutations";
 import { getTokenWithTimeout } from "@/lib/token";
 import {
-  clientAttention, clientPaths, endOfManilaDay, formatManila, manilaDateInput,
-  type ClientCommandResult, type ClientDetail, type ClientMember, type ClientSummary,
+  clientAttention, clientPaths, endOfManilaDay, formatManila, manilaDateInput, personLabel,
+  type ClientCommandResult, type ClientDetail, type ClientMember, type ClientSummary, type PersonRow,
 } from "@/lib/clients";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
 import { StatusBadge } from "./StatusBadge";
@@ -23,6 +23,7 @@ export function ClientsPanel({ getToken }: { getToken: () => Promise<string | nu
   const [list, setList] = useState<Load<ClientSummary[]>>({ status: "loading" });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [tab, setTab] = useState<"businesses" | "people">("businesses");
 
   const token = useCallback(async (signal?: AbortSignal) => {
     const value = await getTokenWithTimeout(getToken, signal);
@@ -50,12 +51,18 @@ export function ClientsPanel({ getToken }: { getToken: () => Promise<string | nu
   if (selectedId) {
     return <ClientDetailView tenantId={selectedId} token={token} onBack={() => { setSelectedId(null); void loadList(); }} />;
   }
+  const tabs = <div className="segmented" role="tablist" aria-label="Clients views">
+    <button type="button" role="tab" aria-selected={tab === "businesses"} className={tab === "businesses" ? "active" : ""} onClick={() => setTab("businesses")}>Businesses</button>
+    <button type="button" role="tab" aria-selected={tab === "people"} className={tab === "people" ? "active" : ""} onClick={() => setTab("people")}>People</button>
+  </div>;
+  if (tab === "people") return <div className="clients">{tabs}<PeopleList token={token} onOpenBusiness={setSelectedId} /></div>;
   if (list.status === "loading") return <LoadingPanel />;
   if (list.status === "error") return <StatePanel error={list.error} dependency="Business API" onRetry={() => void loadList()} />;
 
   const query = filter.trim().toLowerCase();
   const rows = list.data.filter((client) => !query || client.name.toLowerCase().includes(query) || client.slug.includes(query) || client.tenant_id.includes(query));
   return <div className="clients">
+    {tabs}
     <div className="clients-toolbar">
       <label className="clients-search">Find a business<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Name, storefront slug or ID" /></label>
       <button className="button button-secondary" type="button" onClick={() => void loadList()}><ArrowClockwise size={15} /> Refresh</button>
@@ -195,9 +202,9 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
 
     <section className="grant-card client-members">
       <div className="card-heading"><div><span className="eyebrow">Staff</span><h2>People with access</h2></div></div>
-      <p className="muted">Suspended staff are signed out of this business on their next request. Names and emails live in the business Clerk dashboard — search there by user ID.</p>
+      <p className="muted">Suspended staff lose access to this business on their next request. Names and emails come from the business sign-in service when it is connected; otherwise the Clerk user ID is shown.</p>
       {client.members.length === 0 ? <EmptyPanel title="No staff records" body="This business has no memberships." /> : <div className="table-wrap"><table>
-        <thead><tr><th>Clerk user ID</th><th>Role</th><th>Status</th><th>Added</th><th><span className="visually-hidden">Action</span></th></tr></thead>
+        <thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Added</th><th><span className="visually-hidden">Action</span></th></tr></thead>
         <tbody>{client.members.map((member) => <MemberRow key={member.membership_id} member={member} busy={busy} pending={pending}
           onAction={(action, reason) => run(`member:${member.membership_id}:${action}`, clientPaths.member(tenantId, member.membership_id, action), { reason }, action === "suspend" ? "Staff member suspended." : "Staff member reactivated.")} />)}</tbody>
       </table></div>}
@@ -212,6 +219,54 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
   </div>;
 }
 
+function PeopleList({ token, onOpenBusiness }: { token: (signal?: AbortSignal) => Promise<string>; onOpenBusiness: (tenantId: string) => void }) {
+  const [people, setPeople] = useState<Load<PersonRow[]>>({ status: "loading" });
+  const [filter, setFilter] = useState("");
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setPeople({ status: "loading" });
+    try {
+      const result = await apiRequest<{ items: PersonRow[] }>(clientPaths.people, { token: await token(signal), signal });
+      setPeople({ status: "ready", data: result.data.items, requestId: result.requestId });
+    } catch (loadError) {
+      if (loadError instanceof DOMException && loadError.name === "AbortError") return;
+      setPeople({ status: "error", error: asApiError(loadError) });
+    }
+  }, [token]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  if (people.status === "loading") return <LoadingPanel />;
+  if (people.status === "error") return <StatePanel error={people.error} dependency="Business API" onRetry={() => void load()} />;
+  const query = filter.trim().toLowerCase();
+  const rows = people.data.filter((person) => !query
+    || [person.profile?.name, person.profile?.email, person.clerk_user_id, person.tenant_name].some((value) => value?.toLowerCase().includes(query)));
+  return <>
+    <div className="clients-toolbar">
+      <label className="clients-search">Find a person<input type="search" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Name, email, user ID or business" /></label>
+      <button className="button button-secondary" type="button" onClick={() => void load()}><ArrowClockwise size={15} /> Refresh</button>
+    </div>
+    {rows.length === 0 ? <EmptyPanel title={people.data.length === 0 ? "No people yet" : "No person matches"} body={people.data.length === 0 ? "Owners and staff appear here after onboarding." : "Try a different name, email or business."} />
+      : <div className="table-wrap"><table>
+        <thead><tr><th>Person</th><th>Business</th><th>Role</th><th>Access</th><th>Last sign-in</th><th><span className="visually-hidden">Action</span></th></tr></thead>
+        <tbody>{rows.map((person) => {
+          const label = personLabel(person);
+          return <tr key={person.membership_id}>
+            <td><strong>{label.primary}</strong>{label.secondary && <><br /><span className="muted">{label.secondary}</span></>}</td>
+            <td>{person.tenant_name}{person.tenant_status !== "active" && <> <StatusBadge value={person.tenant_status} /></>}</td>
+            <td>{person.role === "owner" ? "Owner" : "Front desk"}</td>
+            <td><StatusBadge value={person.status} />{person.profile?.banned && <> <StatusBadge value="banned" /></>}</td>
+            <td>{formatManila(person.profile?.last_sign_in_at, true)}</td>
+            <td><button className="table-action" type="button" onClick={() => onOpenBusiness(person.tenant_id)}>Open business</button></td>
+          </tr>;
+        })}</tbody>
+      </table></div>}
+    <p className="muted clients-footnote">To suspend or reactivate someone, open their business. <RequestId requestId={people.requestId} /></p>
+  </>;
+}
+
 function BackButton({ onBack }: { onBack: () => void }) {
   return <button className="text-button client-back" type="button" onClick={onBack}><ArrowLeft size={15} /> All businesses</button>;
 }
@@ -221,8 +276,9 @@ function MemberRow({ member, busy, pending, onAction }: { member: ClientMember; 
   const [reason, setReason] = useState("");
   const action = member.status === "active" ? "suspend" : member.status === "suspended" ? "reactivate" : null;
   const intent = action ? `member:${member.membership_id}:${action}` : "";
+  const label = personLabel(member);
   return <tr>
-    <td className="mono">{member.clerk_user_id}</td>
+    <td><strong>{label.primary}</strong>{label.secondary && <><br /><span className="muted">{label.secondary}</span></>}{label.primary !== member.clerk_user_id && <><br /><span className="muted mono">{member.clerk_user_id}</span></>}</td>
     <td>{member.role === "owner" ? "Owner" : "Front desk"}</td>
     <td><StatusBadge value={member.status} /></td>
     <td>{formatManila(member.created_at)}</td>

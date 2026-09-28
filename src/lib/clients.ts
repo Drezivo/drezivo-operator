@@ -21,7 +21,18 @@ export type ClientSummary = {
   member_counts: { active: number; suspended: number; removed: number };
 };
 
-export type ClientMember = { membership_id: string; clerk_user_id: string; role: "owner" | "frontdesk"; status: MemberStatus; created_at: string };
+export type StaffProfile = { email: string | null; name: string | null; last_sign_in_at: string | null; banned: boolean; locked: boolean };
+export type ClientMember = { membership_id: string; clerk_user_id: string; role: "owner" | "frontdesk"; status: MemberStatus; created_at: string; profile?: StaffProfile | null };
+export type PersonRow = ClientMember & { tenant_id: string; tenant_name: string; tenant_status: ClientStatus };
+
+/** Best human label for a staff member: name, then email, then the Clerk user ID. */
+export function personLabel(member: ClientMember): { primary: string; secondary: string | null } {
+  const name = member.profile?.name ?? null;
+  const email = member.profile?.email ?? null;
+  if (name) return { primary: name, secondary: email };
+  if (email) return { primary: email, secondary: null };
+  return { primary: member.clerk_user_id, secondary: null };
+}
 export type ClientAuditEntry = { occurred_at: string; actor_kind: string; action: string; entity_type: string; outcome: string };
 export type ClientDetail = ClientSummary & { members: ClientMember[]; recent_audit: ClientAuditEntry[] };
 export type ClientCommandResult = { tenant: ClientDetail; changed: boolean; replayed: boolean };
@@ -30,6 +41,7 @@ export const OPERATOR_TIME_ZONE = "Asia/Manila";
 
 export const clientPaths = {
   list: "/tenants",
+  people: "/people",
   detail: (id: string) => `/tenants/${encodeURIComponent(id)}`,
   profile: (id: string) => `/tenants/${encodeURIComponent(id)}/profile`,
   lock: (id: string) => `/tenants/${encodeURIComponent(id)}/lock`,

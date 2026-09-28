@@ -50,8 +50,8 @@ Every action needs a reason (stored in the audit log), disables all buttons whil
 reuses the same `Idempotency-Key` if it is retried, so a double click or a retry never applies twice.
 Dates are shown in Manila time; a date picker value means "until 23:59:59 that day, Manila time".
 The data and rules come from the Operator API `/api/v1/tenants*` routes (see the Operator API's
-`docs/OPERATOR-TENANT-ADMIN-MVP.md`). Staff are listed by Clerk user ID; names and emails are in the
-business Clerk dashboard.
+`docs/OPERATOR-TENANT-ADMIN-MVP.md`). The **People** tab lists every owner and staff member across businesses; names,
+emails and last sign-in appear when the Operator API has `BUSINESS_CLERK_SECRET_KEY`, otherwise the Clerk user ID is shown.
 
 Environment variables are documented above. Never commit any `.env*` file, including examples.
 

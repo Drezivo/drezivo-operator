@@ -124,6 +124,24 @@ describe("ClientsPanel", () => {
     expect(paths[0]).toContain(`/tenants/${tenantId}/members/${memberId}/suspend`);
   });
 
+  it("lists people across businesses with names and emails, and opens their business", async () => {
+    const person = { ...detail.members[0]!, tenant_id: tenantId, tenant_name: "Luna Gowns", tenant_status: "active",
+      profile: { email: "maria@luna.ph", name: "Maria Santos", last_sign_in_at: "2026-09-27T01:00:00Z", banned: false, locked: false } };
+    const unnamed = { ...person, membership_id: "44444444-4444-4444-8444-444444444444", clerk_user_id: "user_front_desk", role: "frontdesk", profile: null };
+    mockFetch((url) => url.endsWith("/people") ? envelope({ items: [person, unnamed] })
+      : url.endsWith("/tenants") ? envelope({ items: [detail] }) : envelope({ ...detail, members: [person] }));
+    render(<ClientsPanel getToken={getToken} />);
+    fireEvent.click(await screen.findByRole("tab", { name: "People" }));
+    expect(await screen.findByText("Maria Santos")).toBeInTheDocument();
+    expect(screen.getByText("maria@luna.ph")).toBeInTheDocument();
+    expect(screen.getByText("user_front_desk")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Find a person"), { target: { value: "maria" } });
+    expect(screen.queryByText("user_front_desk")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open business" }));
+    expect(await screen.findByText("People with access")).toBeInTheDocument();
+    expect(screen.getByText("Maria Santos")).toBeInTheDocument();
+  });
+
   it("shows the API failure state when the list cannot load", async () => {
     mockFetch(() => new Response(JSON.stringify({ success: false, request_id: "req_x", error: { code: "DEPENDENCY_UNAVAILABLE", message: "Business administration is not configured." } }), { status: 503 }));
     render(<ClientsPanel getToken={getToken} />);
