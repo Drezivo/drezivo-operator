@@ -4,7 +4,7 @@ import { AppError } from '../errors.js';
 import { emptyBusinessUserDirectory, type BusinessUserDirectory, type BusinessUserProfile } from '../integrations/business-user-directory/index.js';
 
 /**
- * Operator MVP for the first client businesses: list and view businesses and their staff, and run
+ * Client administration for Drezivo's client businesses: list and view businesses and their staff, and run
  * the few lifecycle actions an operator needs before the business API exposes operator commands
  * (ADR 0025). Every mutation is keyed by an Idempotency-Key so a retry replays instead of acting twice.
  */

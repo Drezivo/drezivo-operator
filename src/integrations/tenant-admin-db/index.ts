@@ -12,7 +12,7 @@ import type {
 } from '../../operator-tenant-admin/index.js';
 
 /**
- * Direct business-database adapter for the operator MVP (ADR 0025).
+ * Direct business-database adapter for client administration (ADR 0025).
  *
  * Connects as the business runtime role (`drezivo_app`): no table ownership, no BYPASSRLS. Every
  * tenant read or write runs inside a transaction that sets `app.tenant_id` with `set_config(…, true)`,

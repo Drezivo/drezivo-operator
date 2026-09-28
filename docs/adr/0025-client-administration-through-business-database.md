@@ -1,4 +1,4 @@
-# ADR 0025: Operator MVP tenant administration through the business database
+# ADR 0025: Client administration through the business database
 
 **Status:** Accepted (time-boxed; see Exit plan)
 **Date:** 2026-09-28

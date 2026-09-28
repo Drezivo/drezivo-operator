@@ -1,6 +1,6 @@
-# Operator console go-live checklist (first client businesses)
+# Operator console go-live checklist
 
-Use this once, in order, to switch on the operator MVP (Clients: businesses, people, lock/unlock,
+Use this once, in order, to switch on client administration (Clients: businesses, people, lock/unlock,
 staff suspension, trial end, mark paid, edit). Tick each item only after checking it.
 
 ## 1. Database access (business Supabase project)

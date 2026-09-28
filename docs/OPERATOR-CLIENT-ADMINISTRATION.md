@@ -1,4 +1,4 @@
-# Operator tenant administration (MVP)
+# Operator client administration
 
 The minimum operator toolset for the first client businesses. Design and trade-offs: ADR 0025.
 

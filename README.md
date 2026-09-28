@@ -14,7 +14,7 @@ This service is a control plane for the internal operator web application. The b
 - security headers and bounded JSON parsing
 - CI checks for typecheck, lint, test, and build
 
-The business system's database is Supabase PostgreSQL (business ADR 0009). This service owns no tables and ships no migrations. Most operator features call the business API; the MVP business-administration routes (`/api/v1/tenants*`) read and write the business database directly under its row-level security until the business API exposes equivalent operator commands (ADR 0025, `docs/OPERATOR-TENANT-ADMIN-MVP.md`).
+The business system's database is Supabase PostgreSQL (business ADR 0009). This service owns no tables and ships no migrations. Most operator features call the business API; the client-administration routes (`/api/v1/tenants*`, `/api/v1/people`) read and write the business database directly under its row-level security until the business API exposes equivalent operator commands (ADR 0025, `docs/OPERATOR-CLIENT-ADMINISTRATION.md`).
 
 ## Local setup
 
@@ -49,5 +49,5 @@ For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process envi
 - `docs/BUSINESS-CONTRACT-GAP-REGISTER.md` records unresolved business data and wire-contract decisions blocking support activity integration.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
-- `docs/OPERATOR-GO-LIVE-CHECKLIST.md` is the one-time checklist to switch the operator MVP on for the first client businesses.
-- `docs/OPERATOR-TENANT-ADMIN-MVP.md` and `docs/adr/0025-operator-mvp-direct-tenant-admin.md` define the MVP business list, lock/unlock, staff suspension, trial and activation routes.
+- `docs/OPERATOR-GO-LIVE-CHECKLIST.md` is the one-time checklist to switch on client administration for the first client businesses.
+- `docs/OPERATOR-CLIENT-ADMINISTRATION.md` and `docs/adr/0025-client-administration-through-business-database.md` define the business and people lists, lock/unlock, staff suspension, trial and activation routes.
