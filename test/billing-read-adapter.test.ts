@@ -1,29 +1,67 @@
-import { describe, expect, it, vi } from 'vitest';
-import express, { type NextFunction, type Request, type Response as ExpressResponse } from 'express';
-import request from 'supertest';
+import { createHmac } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
 import { createBillingReadAdapter } from '../src/integrations/billing-read/index.js';
-import { createOperatorBillingRouter } from '../src/operator-billing/index.js';
+import type { SafeOperatorPrincipal } from '../src/operator-auth.js';
 
-const iso = '2026-01-01T00:00:00.000Z'; const tenantId = '550e8400-e29b-41d4-a716-446655440000';
-const subscription = { tenant_id: tenantId, business_name: 'Drezivo Shop', plan_code: 'professional', status: 'active', currency: 'PHP', current_period_start: iso, current_period_end: '2026-02-01T00:00:00.000Z', cancel_at_period_end: false };
-const entitlement = { tenant_id: tenantId, plan_code: 'professional', capability_count: 1, overridden_capability_count: 0, capabilities: [{ capability: 'reports.read', enabled: true, limit_value: null }] };
-const response = (data: unknown, status = 200, contentType = 'application/json') => new Response(JSON.stringify(data), { status, headers: { 'content-type': contentType } });
-const base = (fetchImpl: (input: string | URL, init?: RequestInit) => Promise<Response>) => ({ baseUrl: 'https://business.test', serviceAuth: async (requestId: string) => { expect(requestId).toBe('req-1'); return 'Bearer internal'; }, fetchImpl });
+const tenantId = '550e8400-e29b-41d4-a716-446655440000';
+const requestId = 'req-1';
+const secret = 'operator-assertion-test-secret-over-32-bytes';
+const principal: SafeOperatorPrincipal = { clerkUserId: 'user_clerk_123', operatorOrganizationId: 'org_operator_exact', roles: ['platform_owner'], requestId };
+const subscriptionWire = { id: tenantId, name: 'Drezivo Shop', plan_code: 'professional', status: 'active', currency: 'PHP', current_period_start: '2026-01-01T00:00:00.000Z', current_period_end: '2026-02-01T00:00:00.000Z', cancel_at_period_end: false };
+const subscriptionPublic = { tenant_id: tenantId, business_name: 'Drezivo Shop', plan_code: 'professional', status: 'active', currency: 'PHP', current_period_start: subscriptionWire.current_period_start, current_period_end: subscriptionWire.current_period_end, cancel_at_period_end: false };
+const entitlementWire = { tenant_id: tenantId, plan_code: 'professional', plan_version: 1, source: 'plan_definition', capability_count: 2, capabilities: [{ capability: 'physical_assets.max', enabled: true, limit_value: 100 }, { capability: 'frontdesk_seats.max', enabled: true, limit_value: 5 }] };
+const entitlementPublic = { tenant_id: tenantId, plan_code: 'professional', capability_count: 2, overridden_capability_count: 0, capabilities: entitlementWire.capabilities };
+const response = (data: unknown, status = 200, contentType = 'application/json') => {
+  const body = typeof data === 'object' && data !== null && 'success' in data && (data as { success?: unknown }).success === true
+    ? { ...(data as Record<string, unknown>), request_id: (data as Record<string, unknown>).request_id ?? requestId }
+    : data;
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': contentType } });
+};
+const base = (fetchImpl: typeof fetch) => ({ baseUrl: 'https://business.test/', serviceAuth: async (id: string) => { expect(id).toBe(requestId); return 'Bearer internal'; }, operatorAssertionSecret: secret, fetchImpl });
+
+function claimsFrom(init: RequestInit | undefined): Record<string, unknown> {
+  const headers = init?.headers as Record<string, string>;
+  const token = Object.entries(headers).find(([key]) => key.toLowerCase() === 'x-drezivo-operator-assertion')?.[1]!;
+  const [h, p, sig] = token.split('.');
+  expect(sig).toBe(createHmac('sha256', Buffer.from(secret, 'utf8')).update(`${h}.${p}`).digest('base64url'));
+  return JSON.parse(Buffer.from(p!, 'base64url').toString('utf8')) as Record<string, unknown>;
+}
 
 describe('billing read adapter', () => {
-  it('maps the subscription query and validates the strict envelope', async () => { const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => { const parsed = new URL(String(url)); expect(parsed.pathname).toBe('/internal/operator/v1/subscriptions'); expect(parsed.searchParams.get('plan_code')).toBe('professional'); expect(parsed.searchParams.get('status')).toBe('active'); expect(parsed.searchParams.get('limit')).toBe('10'); expect(init?.headers).toEqual({ Accept: 'application/json', 'X-Request-ID': 'req-1', Authorization: 'Bearer internal' }); return response({ success: true, data: { items: [subscription], next_cursor: null } }); }); const adapter = createBillingReadAdapter(base(fetchImpl)); await expect(adapter.listSubscriptions({ filters: { plan_code: 'professional', status: 'active' }, limit: 10, cursor: null, requestId: 'req-1' })).resolves.toEqual({ items: [subscription], next_cursor: null }); });
-  it('builds the tenant detail path and maps an accepted 404 to null', async () => { const fetchImpl = vi.fn(async (url: string | URL) => { expect(String(url)).toContain(`/internal/operator/v1/businesses/${tenantId}/entitlements`); return response({}, 404); }); const adapter = createBillingReadAdapter(base(fetchImpl)); await expect(adapter.getEntitlements({ tenantId, requestId: 'req-1' })).resolves.toBeNull(); });
-  it('validates entitlement projections and rejects extra fields', async () => { const valid = createBillingReadAdapter(base(async () => response({ success: true, data: entitlement }))); await expect(valid.getEntitlements({ tenantId, requestId: 'req-1' })).resolves.toEqual(entitlement); const extra = createBillingReadAdapter(base(async () => response({ success: true, data: { ...entitlement, secret: 'x' } }))); await expect(extra.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' }); });
-  it('maps non-JSON, non-2xx, malformed, and transport failures safely', async () => { const html = createBillingReadAdapter(base(async () => response('<html>', 200, 'text/html'))); await expect(html.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' }); const failed = createBillingReadAdapter(base(async () => response({ secret: 'x' }, 502))); await expect(failed.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' }); const malformed = createBillingReadAdapter(base(async () => new Response('bad', { status: 200, headers: { 'content-type': 'application/json' } }))); await expect(malformed.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' }); const timeout = createBillingReadAdapter({ ...base(async (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('abort')))),), timeoutMs: 250 }); await expect(timeout.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' }); });
-  it('rejects unsafe base URL and preserves auth failures', async () => { expect(() => createBillingReadAdapter({ baseUrl: 'http://business.test', serviceAuth: async () => 'Bearer x' })).toThrow(); const client = createBillingReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async () => '' }); await expect(client.getEntitlements({ tenantId, requestId: 'req-1' })).rejects.toMatchObject({ code: 'OPERATOR_AUTH_UNAVAILABLE' }); });
-  it('composes the route, adapter, and upstream request context', async () => {
-    let upstreamUrl = ''; let upstreamInit: RequestInit | undefined;
-    const fetchImpl = async (url: string | URL, init?: RequestInit) => { upstreamUrl = String(url); upstreamInit = init; return response({ success: true, data: { items: [subscription], next_cursor: null } }); };
-    const adapter = createBillingReadAdapter(base(fetchImpl)); const app = express();
-    app.use((_req, res, next) => { res.locals.requestId = 'req-1'; next(); });
-    app.use('/api/v1', createOperatorBillingRouter(adapter, (_req, _res, next) => next(), { permissionMiddleware: () => (_req, _res, next) => next() }));
-    app.use((error: unknown, _req: Request, res: ExpressResponse, _next: NextFunction) => { const e = error as { status?: number; code?: string; message?: string }; res.status(e.status ?? 500).json({ error: { code: e.code, message: e.message } }); });
-    const result = await request(app).get('/api/v1/subscriptions?plan_code=professional&limit=10');
-    expect(result.status).toBe(200); expect(result.body.data.items).toEqual([subscription]); expect(upstreamUrl).toBe('https://business.test/internal/operator/v1/subscriptions?limit=10&plan_code=professional'); expect(upstreamInit?.headers).toEqual({ Accept: 'application/json', 'X-Request-ID': 'req-1', Authorization: 'Bearer internal' });
+  it('signs the subscription request and maps the strict business projection to the public contract', async () => {
+    let seen: Request | undefined;
+    const adapter = createBillingReadAdapter(base(async (input, init) => { seen = new Request(input, init); return response({ success: true, data: { items: [subscriptionWire], next_cursor: null }, request_id: requestId }); }));
+    await expect(adapter.listSubscriptions({ principal, filters: { plan_code: 'professional', status: 'active' }, limit: 10, cursor: null, requestId })).resolves.toEqual({ items: [subscriptionPublic], next_cursor: null });
+    expect(seen!.url).toBe('https://business.test/internal/operator/v1/subscriptions?limit=10&plan_code=professional&status=active');
+    expect(seen!.headers.get('authorization')).toBe('Bearer internal');
+    expect(seen!.headers.get('x-request-id')).toBe(requestId);
+    expect(claimsFrom({ headers: Object.fromEntries(seen!.headers.entries()) })).toMatchObject({ sub: principal.clerkUserId, role: 'platform_owner', permission: 'operator.subscription.list.read', method: 'GET', path: '/internal/operator/v1/subscriptions', request_id: requestId });
+  });
+
+  it('binds entitlement assertions to the route tenant and maps only approved fields', async () => {
+    let seen: Request | undefined;
+    const adapter = createBillingReadAdapter(base(async (input, init) => { seen = new Request(input, init); return response({ success: true, data: entitlementWire, request_id: requestId }); }));
+    await expect(adapter.getEntitlements({ principal, tenantId, requestId })).resolves.toEqual(entitlementPublic);
+    expect(new URL(seen!.url).pathname).toBe(`/internal/operator/v1/businesses/${tenantId}/entitlements`);
+    expect(claimsFrom({ headers: Object.fromEntries(seen!.headers.entries()) })).toMatchObject({ permission: 'operator.entitlements.read', tenant_id: tenantId, path: `/internal/operator/v1/businesses/${tenantId}/entitlements` });
+  });
+
+  it('rejects tenant mismatches and unknown upstream fields', async () => {
+    const mismatch = createBillingReadAdapter(base(async () => response({ success: true, data: { ...entitlementWire, tenant_id: '00000000-0000-4000-8000-000000000001' } })));
+    await expect(mismatch.getEntitlements({ principal, tenantId, requestId })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
+    const extra = createBillingReadAdapter(base(async () => response({ success: true, data: { items: [{ ...subscriptionWire, provider_reference: 'private' }], next_cursor: null } } )));
+    await expect(extra.listSubscriptions({ principal, filters: {}, limit: 25, cursor: null, requestId })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
+  });
+
+  it('preserves the approved not-found mapping and hides upstream failures', async () => {
+    const missing = createBillingReadAdapter(base(async () => response({}, 404)));
+    await expect(missing.getEntitlements({ principal, tenantId, requestId })).resolves.toBeNull();
+    const failed = createBillingReadAdapter(base(async () => response({ secret: 'private' }, 502)));
+    await expect(failed.getEntitlements({ principal, tenantId, requestId })).rejects.toMatchObject({ code: 'DEPENDENCY_UNAVAILABLE' });
+  });
+
+  it('rejects a successful envelope correlated to another request', async () => {
+    const adapter = createBillingReadAdapter(base(async () => response({ success: true, data: { items: [subscriptionWire], next_cursor: null }, request_id: 'other-request' })));
+    await expect(adapter.listSubscriptions({ principal, filters: {}, limit: 10, cursor: null, requestId })).rejects.toMatchObject({ code: 'DEPENDENCY_INVALID_RESPONSE' });
   });
 });

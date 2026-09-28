@@ -49,11 +49,7 @@ Expected failures use the existing stable codes, including `UNAUTHENTICATED`, `F
 
 Returns an aggregate snapshot. It is a point-in-time read and does not claim a transactionally consistent dashboard across every source.
 
-Query parameters:
-
-| Parameter | Type | Rule |
-| --- | --- | --- |
-| `as_of` | ISO 8601 timestamp | Optional, bounded to the permitted lookback window; reject future or malformed values |
+This route accepts no query parameters. In particular, callers cannot select `as_of`; the business API supplies the snapshot timestamp.
 
 Response data:
 
@@ -69,15 +65,22 @@ type OperatorOverview = {
     trial: number;
     grace: number;
     past_due: number;
+    restricted: number;
+    cancelled: number;
+    missing: number;
+    expired_trials: number;
+    expired_grace: number;
+    incomplete_trials: number;
+    incomplete_grace: number;
   };
   attention: {
     failed_jobs: number;
     failed_notifications: number;
-    pending_support_grants: number;
+    active_support_grants: number;
   };
-  recent_signups: Array<{
-    tenant_id: string;
-    business_name: string;
+  recent_businesses: Array<{
+    id: string;
+    name: string;
     slug: string;
     status: "active" | "restricted" | "cancelled";
     created_at: string;
@@ -85,7 +88,7 @@ type OperatorOverview = {
 };
 ```
 
-Counts are safe aggregates. `recent_signups` is capped by the server, uses a fixed newest-first order, and contains no owner email, customer data, payment details, or free-form provider payload.
+Counts are safe aggregates. `recent_businesses` is capped by the server, uses a fixed newest-first order, and contains no owner email, customer data, payment details, or free-form provider payload.
 
 ### `GET /api/v1/businesses`
 

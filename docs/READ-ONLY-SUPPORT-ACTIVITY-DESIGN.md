@@ -29,8 +29,8 @@ The first approved projection should contain only these fields:
 | `action` | Stable action name | Bounded opaque token or approved allowlist |
 | `entity_type` | Affected entity category | Bounded opaque token or approved allowlist |
 | `entity_id` | Affected entity identifier | UUID or `null` |
-| `support_grant_id` | Grant associated with the activity | UUID or `null`; source must define when null is valid |
-| `outcome` | `succeeded`, `rejected`, or `failed` | Closed enum matching the canonical audit model |
+| `support_grant_id` | Grant associated with the activity | UUID or `null`; current production write paths do not populate this field, so the source contract must define when null is valid |
+| `outcome` | `succeeded`, `rejected`, or `failed` | Closed enum matching the canonical audit model; legacy backfilled `succeeded` must not be presented as an original event fact |
 | `request_id` | Request correlation identifier | Bounded opaque key; never a bearer credential |
 | `redacted_summary` | Safe human-readable event context | Nullable, bounded, redacted text or approved structured summary |
 
@@ -80,13 +80,14 @@ The route must remain on its unavailable adapter until the unresolved source que
 Before implementation, the business API and security reviewers must approve:
 
 1. Whether support activity is sourced from `audit_event`, `global_audit_event`, or a reviewed union with a precise reconciliation rule.
-2. Whether `support_grant_id` must be non-null for every result or whether related operator actions may legitimately be null.
-3. Exact action and entity-type allowlists, including whether tenant-facing staff activity is included.
-4. Exact actor-key derivation and redaction policy.
-5. Whether `redacted_summary` is text or a bounded structured object, and its maximum size.
-6. Scope behavior for one tenant, several assigned tenants, and one support grant.
-7. Retention, rate limits, and whether event timestamps are authoritative `created_at` values exposed as `occurred_at`.
-8. The internal endpoint, service authentication, response envelope, and error mapping.
+2. How the source identifies legacy rows backfilled as `system` and `succeeded`, so compatibility defaults are distinguished from original actor and outcome facts.
+3. Whether `support_grant_id` must be non-null for every result or whether related operator actions may legitimately be null; current production write paths do not populate this field.
+4. Exact action and entity-type allowlists, including whether tenant-facing staff activity is included.
+5. Exact actor-key derivation and redaction policy.
+6. Whether the source JSONB summary is exposed as bounded text or a structured DTO, its maximum size, and its nullability rule.
+7. Scope behavior for one tenant, several assigned tenants, and one support grant.
+8. Retention, rate limits, and whether event timestamps are authoritative `created_at` values exposed as `occurred_at`.
+9. The internal endpoint, service authentication, response envelope, and error mapping.
 
 No implementation should guess these values. Unknown roles, permissions, event states, scope kinds, and source fields fail closed.
 

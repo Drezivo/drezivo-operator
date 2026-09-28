@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
+import type { SafeOperatorPrincipal } from '../operator-auth.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
@@ -35,8 +36,8 @@ export type SubscriptionPage = z.infer<typeof subscriptionPageSchema>;
 export type EntitlementDetail = z.infer<typeof entitlementDetailSchema>;
 export type SubscriptionFilters = { plan_code?: z.infer<typeof planCodeSchema>; status?: z.infer<typeof lifecycleStatusSchema> };
 export type BillingReadPort = {
-  listSubscriptions(input: { filters: SubscriptionFilters; limit: number; cursor: { currentPeriodEnd: string; tenantId: string } | null; requestId: string }): Promise<{ items: SubscriptionSummary[]; next_cursor: { currentPeriodEnd: string; tenantId: string } | null }>;
-  getEntitlements(input: { tenantId: string; requestId: string }): Promise<EntitlementDetail | null>;
+  listSubscriptions(input: { principal: SafeOperatorPrincipal; filters: SubscriptionFilters; limit: number; cursor: { currentPeriodEnd: string; tenantId: string } | null; requestId: string }): Promise<{ items: SubscriptionSummary[]; next_cursor: { currentPeriodEnd: string; tenantId: string } | null }>;
+  getEntitlements(input: { principal: SafeOperatorPrincipal; tenantId: string; requestId: string }): Promise<EntitlementDetail | null>;
 };
 export const unavailableBillingReadPort: BillingReadPort = {
   listSubscriptions: async () => { throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.'); },
@@ -70,7 +71,7 @@ export function createOperatorBillingRouter(readPort: BillingReadPort = unavaila
   const router = express.Router();
   const permission = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));
   router.use(authorize);
-  router.get('/subscriptions', permission('subscription.read'), async (req, res, next) => { try { const p = query(req); const data = await readPort.listSubscriptions({ filters: p.filters, limit: p.limit, cursor: p.cursor ? decodeCursor(p.cursor, p.filters) : null, requestId: String(res.locals.requestId ?? 'unknown') }); const parsed = z.object({ items: z.array(subscriptionSummarySchema), next_cursor: z.object({ currentPeriodEnd: isoDate, tenantId: uuid }).strict().nullable() }).strict().parse(data); res.setHeader('Cache-Control', 'no-store'); res.json(envelope({ items: parsed.items, next_cursor: parsed.next_cursor ? encodeSubscriptionCursor(parsed.next_cursor, p.filters) : null }, String(res.locals.requestId ?? 'unknown'))); } catch (e) { sendError(next, e); } });
-  router.get('/businesses/:tenantId/entitlements', permission('entitlement.read'), async (req, res, next) => { try { const tenantId = typeof req.params.tenantId === 'string' ? req.params.tenantId : ''; if (!uuid.safeParse(tenantId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The tenant identifier is invalid.'); const data = await readPort.getEntitlements({ tenantId, requestId: String(res.locals.requestId ?? 'unknown') }); if (data === null) throw new AppError(404, 'NOT_FOUND', 'The business entitlements were not found.'); res.setHeader('Cache-Control', 'no-store'); res.json(envelope(entitlementDetailSchema.parse(data), String(res.locals.requestId ?? 'unknown'))); } catch (e) { sendError(next, e); } });
+  router.get('/subscriptions', permission('subscription.read'), async (req, res, next) => { try { const p = query(req); const principal = res.locals.operatorPrincipal; if (!principal) throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.'); const data = await readPort.listSubscriptions({ principal, filters: p.filters, limit: p.limit, cursor: p.cursor ? decodeCursor(p.cursor, p.filters) : null, requestId: String(res.locals.requestId ?? 'unknown') }); const parsed = z.object({ items: z.array(subscriptionSummarySchema), next_cursor: z.object({ currentPeriodEnd: isoDate, tenantId: uuid }).strict().nullable() }).strict().parse(data); res.setHeader('Cache-Control', 'no-store'); res.json(envelope({ items: parsed.items, next_cursor: parsed.next_cursor ? encodeSubscriptionCursor(parsed.next_cursor, p.filters) : null }, String(res.locals.requestId ?? 'unknown'))); } catch (e) { sendError(next, e); } });
+  router.get('/businesses/:tenantId/entitlements', permission('entitlement.read'), async (req, res, next) => { try { const tenantId = typeof req.params.tenantId === 'string' ? req.params.tenantId : ''; if (!uuid.safeParse(tenantId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The tenant identifier is invalid.'); const principal = res.locals.operatorPrincipal; if (!principal) throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.'); const data = await readPort.getEntitlements({ principal, tenantId, requestId: String(res.locals.requestId ?? 'unknown') }); if (data === null) throw new AppError(404, 'NOT_FOUND', 'The business entitlements were not found.'); res.setHeader('Cache-Control', 'no-store'); res.json(envelope(entitlementDetailSchema.parse(data), String(res.locals.requestId ?? 'unknown'))); } catch (e) { sendError(next, e); } });
   return router;
 }

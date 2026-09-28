@@ -30,7 +30,7 @@ export function startServer(port = config.PORT): http.Server {
   const server = createAppServer();
   const shutdown = createShutdownHandler(server);
   process.once('SIGTERM', shutdown); process.once('SIGINT', shutdown);
-  server.listen(port, () => markProcessReady());
+  server.listen(port, config.OPERATOR_API_HOST, () => markProcessReady());
   return server;
 }
 if (process.env.NODE_ENV !== 'test') startServer();

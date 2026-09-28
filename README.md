@@ -14,7 +14,7 @@ This service is a control plane for the internal operator web application. The b
 - security headers and bounded JSON parsing
 - CI checks for typecheck, lint, test, and build
 
-The first wave contains no database migration. Neon remains shared with the business system until read projections and mutation contracts have been reviewed.
+The business system's database is Supabase PostgreSQL (business ADR 0009). This service owns no tables and ships no migrations. Most operator features call the business API; the MVP business-administration routes (`/api/v1/tenants*`) read and write the business database directly under its row-level security until the business API exposes equivalent operator commands (ADR 0025, `docs/OPERATOR-TENANT-ADMIN-MVP.md`).
 
 ## Local setup
 
@@ -29,6 +29,8 @@ npm run build
 ```
 
 Environment variable names and deployment requirements are documented in `CONTRIBUTING.md` and the TRD. Never commit an environment file.
+
+For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process environment before running the service. The default `0.0.0.0` preserves the deployed bind behavior.
 
 ## Documentation
 
@@ -47,3 +49,4 @@ Environment variable names and deployment requirements are documented in `CONTRI
 - `docs/BUSINESS-CONTRACT-GAP-REGISTER.md` records unresolved business data and wire-contract decisions blocking support activity integration.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.
+- `docs/OPERATOR-TENANT-ADMIN-MVP.md` and `docs/adr/0025-operator-mvp-direct-tenant-admin.md` define the MVP business list, lock/unlock, staff suspension, trial and activation routes.

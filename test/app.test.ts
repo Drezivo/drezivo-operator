@@ -33,6 +33,32 @@ describe('operator API foundation', () => {
     expect(readiness.body).toEqual({ status: 'ready' });
     expect(readiness.headers['cache-control']).toBe('no-store');
   });
+  it('answers allowed dashboard preflight without Clerk authentication', async () => {
+    const response = await request(app)
+      .options('/api/v1/overview')
+      .set('Origin', 'http://localhost:3010')
+      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Headers', 'authorization, x-request-id');
+    expect(response.status).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:3010');
+    expect(response.headers['access-control-allow-methods']).toContain('GET');
+    expect(response.headers['access-control-allow-headers']).toContain('Authorization');
+    expect(response.headers['access-control-allow-credentials']).toBeUndefined();
+  });
+  it('rejects unlisted origins and methods without reflecting them', async () => {
+    const badOrigin = await request(app)
+      .options('/api/v1/overview')
+      .set('Origin', 'http://localhost:3001')
+      .set('Access-Control-Request-Method', 'GET');
+    const badMethod = await request(app)
+      .options('/api/v1/overview')
+      .set('Origin', 'http://localhost:3010')
+      .set('Access-Control-Request-Method', 'DELETE');
+    expect(badOrigin.status).toBe(403);
+    expect(badOrigin.headers['access-control-allow-origin']).toBeUndefined();
+    expect(badMethod.status).toBe(403);
+    expect(badMethod.headers['access-control-allow-origin']).toBeUndefined();
+  });
   it('keeps public probes unthrottled while protected routes are rate limited', async () => {
     const isolatedApp = createApp(createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }));
     expect((await request(isolatedApp).get('/health')).status).toBe(200);
@@ -94,6 +120,12 @@ describe('operator API foundation', () => {
     expect(jobs.body.error.code).toBe('UNAUTHENTICATED');
     expect(notifications.status).toBe(401);
     expect(notifications.body.error.code).toBe('UNAUTHENTICATED');
+  });
+  it('protects the platform analytics read route', async () => {
+    const response = await request(app).get('/api/v1/analytics');
+    expect(response.status).toBe(401);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
   it('protects directory and support activity routes', async () => {
     const operators = await request(app).get('/api/v1/operators');

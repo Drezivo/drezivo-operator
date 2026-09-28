@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { requireOperatorTenantScope, tenantIdFromPath, type TenantScopeResolver } from '../src/operator-scope.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
-const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', requestId: 'req' };
+const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner' as const], requestId: 'req' };
 function app(middleware: ReturnType<typeof requireOperatorTenantScope>, withPrincipal = true) {
   const server = express(); server.use((_req, res, next) => { if (withPrincipal) res.locals.operatorPrincipal = principal; next(); });
   server.get('/tenants/:tenantId/protected', middleware, (_req, res) => res.status(204).end());

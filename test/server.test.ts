@@ -45,4 +45,30 @@ describe('server lifecycle', () => {
     expect(close).toHaveBeenCalledTimes(1);
     expect(closeAllConnections).toHaveBeenCalledTimes(1);
   });
+
+  it('binds only to loopback when OPERATOR_API_HOST is set to 127.0.0.1', async () => {
+    const sigtermListeners = new Set(process.listeners('SIGTERM'));
+    const sigintListeners = new Set(process.listeners('SIGINT'));
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('OPERATOR_API_HOST', '127.0.0.1');
+    vi.resetModules();
+    const { startServer: startConfiguredServer } = await import('../src/server.js');
+    const server = startConfiguredServer(0);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
+      expect(server.address()).toMatchObject({ address: '127.0.0.1' });
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      for (const listener of process.listeners('SIGTERM')) {
+        if (!sigtermListeners.has(listener)) process.removeListener('SIGTERM', listener);
+      }
+      for (const listener of process.listeners('SIGINT')) {
+        if (!sigintListeners.has(listener)) process.removeListener('SIGINT', listener);
+      }
+    }
+  });
 });

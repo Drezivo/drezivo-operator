@@ -3,7 +3,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { requireOperatorPermission, type OperatorPermissionResolver } from '../src/operator-permission.js';
 
-const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', requestId: 'req' };
+const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner' as const], requestId: 'req' };
 function app(middleware: ReturnType<typeof requireOperatorPermission>, withPrincipal = true) {
   const server = express(); server.use((req, res, next) => { if (withPrincipal) res.locals.operatorPrincipal = principal; next(); });
   server.get('/protected', middleware, (_req, res) => res.status(204).end());

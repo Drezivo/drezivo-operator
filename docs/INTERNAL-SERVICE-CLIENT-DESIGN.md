@@ -13,7 +13,7 @@ The caller remains responsible for validating the returned JSON against its rout
 
 The client enforces:
 
-- an HTTPS base URL, with insecure HTTP allowed only when explicitly enabled for local or test use
+- an HTTPS base URL, with HTTP allowed only when `INTERNAL_SERVICE_ALLOW_INSECURE_HTTP=true`, `NODE_ENV=development`, and the host is exactly `localhost`, `127.0.0.1`, or `::1`
 - no base URL credentials, query, fragment, or missing trailing slash
 - relative paths only
 - paths under the internal prefix
@@ -26,6 +26,8 @@ The client enforces:
 - status-aware responses with an explicit accepted-status allowlist
 
 The service authentication value is supplied by an injected callback. The callback receives only the request ID and must return a non-empty value without control characters. This leaves the approved service authentication mechanism, rotation, and secret source to deployment configuration without committing credentials or environment files.
+
+The insecure HTTP opt-in defaults to false. The application rejects the opt-in unless the Business API URL is a loopback HTTP URL with a trailing slash and no credentials, query, or fragment. The internal client independently rejects non-loopback HTTP even when an adapter is explicitly given the opt-in. Never enable this flag outside local development; deployed service URLs must use HTTPS.
 
 ## Error behavior
 

@@ -11,7 +11,7 @@ const key = 'retry-intent-123456';
 const reason = { reason: 'Retry after the provider timeout was investigated.' };
 function port(overrides: Partial<OperationsRetryCommandPort> = {}): OperationsRetryCommandPort { return { retryJob: async () => result('job.retry', jobId), retryNotification: async () => result('notification.retry', deliveryId), ...overrides }; }
 function app(commandPort: OperationsRetryCommandPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next(), withPrincipal = true) {
-  const a = express(); a.use(express.json()); a.use((_req, res, next) => { res.locals.requestId = 'req'; if (withPrincipal) res.locals.operatorPrincipal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', requestId: 'req' }; next(); });
+  const a = express(); a.use(express.json()); a.use((_req, res, next) => { res.locals.requestId = 'req'; if (withPrincipal) res.locals.operatorPrincipal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); });
   a.use('/api/v1', createOperatorRetryRouter(commandPort, (_req, _res, next) => next(), { permissionMiddleware: permission }));
   a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a;
 }

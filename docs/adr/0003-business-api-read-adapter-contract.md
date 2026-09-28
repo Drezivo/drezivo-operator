@@ -1,6 +1,6 @@
 # ADR 0003: Business API read adapter contract
 
-**Status:** Proposed for review  
+**Status:** Superseded by the current Overview bridge contract in `BUSINESS-READ-ADAPTER-DESIGN.md`
 **Date:** 2026-09-17  
 **Scope:** Read-only operator overview and business summary projections
 
@@ -30,7 +30,7 @@ The adapter exposes these operations:
 
 ```ts
 type BusinessApiReadAdapter = {
-  overview(input: { asOf?: string }): Promise<OperatorOverview>;
+  overview(input: { principal: SafeOperatorPrincipal; requestId: string }): Promise<OperatorOverview>;
   listBusinesses(input: {
     filters: BusinessListFilters;
     limit: number;
@@ -52,7 +52,7 @@ When approved, the adapter maps its operations to an internal business read API 
 these logical shapes:
 
 ```text
-GET {businessReadBaseUrl}/internal/operator/v1/overview?as_of={asOf}
+GET {businessReadBaseUrl}/internal/operator/v1/overview
 GET {businessReadBaseUrl}/internal/operator/v1/businesses
     ?cursor_created_at={cursorCreatedAt}&cursor_tenant_id={cursorTenantId}
     &limit={limit}&q={q}&status={status}&plan_code={planCode}
@@ -60,8 +60,11 @@ GET {businessReadBaseUrl}/internal/operator/v1/businesses
 GET {businessReadBaseUrl}/internal/operator/v1/businesses/{tenantId}
 ```
 
-The exact upstream URL, authentication mechanism, and deployment hostname require
-approval before implementation. Query values are encoded by an HTTP client, never
+The Overview assertion is signed with `INTERNAL_OPERATOR_ASSERTION_SECRET`, bound to
+the verified operator and fixed method/path, and sent as
+`X-Drezivo-Operator-Assertion` beside internal service authentication and
+`X-Request-ID`. The current endpoint generates its own `as_of`; callers cannot
+choose one. Query values are encoded by an HTTP client, never
 concatenated into SQL or an untrusted URL. The operator route owns the opaque cursor
 and decodes it before calling the adapter. The adapter transport sends the normalized
 `cursor_created_at` and `cursor_tenant_id` tuple fields, or omits both fields for the

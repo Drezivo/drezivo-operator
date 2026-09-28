@@ -2,17 +2,20 @@ import { clerkMiddleware, getAuth } from '@clerk/express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { config, isClerkConfigured } from './config.js';
 import { AppError } from './errors.js';
+import { operatorRoleSchema, type OperatorRole } from './operator-authorization.js';
 
 export type SafeOperatorPrincipal = {
   clerkUserId: string;
   operatorOrganizationId: string;
+  roles: OperatorRole[];
   requestId: string;
 };
 
 export type OperatorMembershipResolver = (principal: {
   clerkUserId: string;
   operatorOrganizationId: string;
-}) => boolean | Promise<boolean>;
+  request?: Request;
+}) => Promise<{ active: boolean; roles: OperatorRole[] }>;
 
 export type VerifiedClerkAuth = {
   isAuthenticated: boolean;
@@ -29,6 +32,7 @@ export async function authorizeOperator(
   expectedOrganizationId: string,
   requestId: string,
   membershipResolver: OperatorMembershipResolver = denyOperatorMembership,
+  request?: Request,
 ): Promise<SafeOperatorPrincipal> {
   if (!auth.isAuthenticated || !auth.userId || !auth.orgId) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentication is required.');
@@ -36,11 +40,12 @@ export async function authorizeOperator(
   if (auth.orgId !== expectedOrganizationId) {
     throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
   }
-  const allowed = await membershipResolver({ clerkUserId: auth.userId, operatorOrganizationId: auth.orgId });
-  if (!allowed) {
+  const membership = await membershipResolver({ clerkUserId: auth.userId, operatorOrganizationId: auth.orgId, request });
+  const roles = operatorRoleSchema.array().length(1).safeParse(membership?.roles);
+  if (membership?.active !== true || !roles.success) {
     throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
   }
-  return { clerkUserId: auth.userId, operatorOrganizationId: auth.orgId, requestId };
+  return { clerkUserId: auth.userId, operatorOrganizationId: auth.orgId, roles: roles.data, requestId };
 }
 
 declare global {
@@ -56,12 +61,26 @@ export function clerkContextMiddleware(): RequestHandler {
   if (!isClerkConfigured()) {
     return (_req, _res, next) => next();
   }
-  const clerkHandler = clerkMiddleware({ secretKey: config.CLERK_SECRET_KEY });
+  const clerkHandler = clerkMiddleware();
+  return createBearerOnlyClerkContext(clerkHandler);
+}
+
+/** Clerk may inspect cookies as well as bearer tokens; this API accepts bearer sessions only. */
+export function createBearerOnlyClerkContext(clerkHandler: RequestHandler): RequestHandler {
   return (req, res, next) => {
+    const cookieHeader = req.headers.cookie;
+    delete req.headers.cookie;
+    let resumed = false;
+    const resume = (error?: unknown) => {
+      if (resumed) return;
+      resumed = true;
+      if (cookieHeader !== undefined) req.headers.cookie = cookieHeader;
+      next(error === undefined ? undefined : mapClerkProviderError(error));
+    };
     try {
-      clerkHandler(req, res, (error?: unknown) => next(error === undefined ? undefined : mapClerkProviderError(error)));
+      clerkHandler(req, res, resume);
     } catch (error) {
-      next(mapClerkProviderError(error));
+      resume(error);
     }
   };
 }
@@ -116,6 +135,7 @@ export function requireOperator(options: ClerkContextOptions = {}): RequestHandl
         config.OPERATOR_CLERK_ORGANIZATION_ID ?? '',
         requestId,
         resolveMembership,
+        req,
       );
       next();
     } catch (error) {
@@ -124,6 +144,6 @@ export function requireOperator(options: ClerkContextOptions = {}): RequestHandl
   };
 }
 
-function denyOperatorMembership(): false {
-  return false;
+async function denyOperatorMembership(): Promise<{ active: false; roles: [] }> {
+  return { active: false, roles: [] };
 }

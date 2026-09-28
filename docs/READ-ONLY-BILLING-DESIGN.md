@@ -1,6 +1,6 @@
 # Read-only billing and entitlement design
 
-**Status:** Typed adapter implemented; routes remain on the fail-closed unavailable port until approved live configuration is mounted
+**Status:** Typed Business API adapter mounted behind internal service configuration and request-bound assertions
 **Scope:** Operator subscription list and effective entitlement detail  
 **Database impact:** None. This design adds no operator tables, indexes, migrations, or replicated records.
 
@@ -8,11 +8,11 @@
 
 Billing operators need a narrow view of subscription state and the capabilities currently effective for a business. The operator API is a control-plane consumer of the business platform. The business API and Neon are authoritative for plans, plan versions, subscriptions, entitlement evaluation, and billing invariants.
 
-This design defines the operator-facing read contract and adapter boundary. It does not assert that a business API endpoint, transport credential, or deployment URL already exists. An approved business read projection or reviewed read-only query path must be available before implementation.
+The Business API owns the subscription and entitlement projections. The Operator API calls its existing subscription-list and tenant-entitlement routes through the bounded internal service client.
 
 The operator API must not become a billing database, payment console, or unrestricted customer browser. It must not write subscriptions, plans, entitlements, prices, overrides, invoices, payment methods, or provider records.
 
-The typed billing read adapter is implemented and validates the business-service envelope and billing projections. The application currently mounts the fail-closed unavailable port. Live mounting requires an approved business-service base URL, service-auth provider, source contract, and deployment configuration; this design does not claim that production business connectivity is enabled.
+The typed billing adapter requires an exact `request_id` echo, validates the full upstream wire shape strictly, and maps the upstream business `id` and `name` fields into the existing Operator API `tenant_id` and `business_name` contract. Entitlement reads bind the assertion and returned projection to the requested tenant UUID; implementation-only envelope fields are removed only after their exact values have been validated. Missing assertion configuration fails before network access. This local adapter does not establish that a production endpoint or credential is configured.
 
 ## Authorization
 
@@ -73,13 +73,13 @@ type EffectiveEntitlementDetail = {
 };
 ```
 
-The current boundary requires each capability name to be a nonempty string and each `limit_value` to be a non-negative integer or null. Extra fields are rejected. A concrete business capability allowlist has not yet been supplied, so this boundary does not claim to reject unknown capability names. Capability allowlist approval is a pre-live gate. Duplicate capability keys or contradictory entries fail closed. The response must not contain member names or emails, customer data, payment credentials, card data, invoices, provider customer or subscription identifiers, webhook secrets, raw override reasons, private files, or arbitrary provider JSON.
+The Operator API public projection accepts a nonempty capability name and a non-negative integer or null limit. The Business API adapter currently enforces its stricter two-capability wire contract (`physical_assets.max` and `frontdesk_seats.max`), requires exactly two distinct entries, and rejects extra fields. The response must not contain member names or emails, customer data, payment credentials, card data, invoices, provider customer or subscription identifiers, webhook secrets, raw override reasons, private files, or arbitrary provider JSON.
 
 An absent or hidden tenant returns the safe `NOT_FOUND` result defined by the shared response conventions. The operator API does not infer entitlement state from Clerk claims, frontend state, cached subscription data, or the existence of a support grant.
 
 ## Adapter and response validation
 
-Both routes call one typed business read adapter after route validation and authorization. The adapter receives normalized filters, the decoded `currentPeriodEnd + tenantId` cursor tuple, tenant UUID, and validated operator context. It does not receive an Express request, raw query string, browser role, permission, token, or client-provided URL.
+Both routes call one typed business read adapter after route validation and authorization. The adapter receives the normalized filters, the decoded `currentPeriodEnd + tenantId` cursor tuple, tenant UUID, and verified operator principal needed to sign the upstream assertion. It does not receive an Express request, raw query string, client-supplied permission, token, or URL.
 
 Treat every downstream response as untrusted. Validate HTTP status, content type, response envelope, complete payload shape, UUIDs, timestamps, currency, enum values, counts, amounts, cursor data, and excluded-field absence with strict schemas. Reject unknown keys and malformed or contradictory data. Do not strip unexpected fields and continue, and do not pass provider JSON through to callers.
 
@@ -87,7 +87,7 @@ The business API and Neon remain the sole authority. This repository adds no dir
 
 ## Internal transport adapter
 
-The adapter uses the shared `InternalServiceClient`. It forwards the validated request ID as `X-Request-ID` and obtains the internal service credential from the injected service-auth callback for `Authorization`. Browser cookies, arbitrary incoming headers, raw Clerk tokens, and client-supplied URLs are not forwarded. HTTPS, bounded response size, timeout, and redirect rejection are enforced by the shared client; insecure HTTP is permitted only for an explicit local-test configuration.
+The adapter uses the shared `InternalServiceClient` and a short-lived HS256 assertion bound to the verified subject and role, exact route, permission, and request ID. Tenant entitlement reads also bind the tenant UUID. It forwards the validated request ID as `X-Request-ID` and obtains the internal service credential from the injected service-auth callback for `Authorization`. Successful responses must echo the same request ID. Browser cookies, arbitrary incoming headers, raw Clerk tokens, and client-supplied URLs are not forwarded. HTTPS, bounded response size, timeout, and redirect rejection are enforced by the shared client; insecure HTTP is permitted only for an explicit local-test configuration.
 
 The exact allowlisted business-service paths are:
 

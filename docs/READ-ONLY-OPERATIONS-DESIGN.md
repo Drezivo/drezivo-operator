@@ -1,6 +1,6 @@
 # Read-only operations design
 
-**Status:** Typed adapter implemented; route remains on the fail-closed unavailable port until approved live configuration is mounted
+**Status:** Typed Business API adapter mounted behind internal service configuration and request-bound assertions
 **Scope:** Operational job and notification read projections  
 **Database impact:** None. This design adds no tables, indexes, migrations, retries, or mutation routes.
 
@@ -10,7 +10,7 @@ This slice gives authorized operators a bounded view of durable background work 
 
 The source model is `outbox_event`, which records `pending`, `leased`, `succeeded`, or `dead` work, and `notification_delivery`, which records the delivery outcome related to an outbox event. External delivery is at-least-once. This read surface reports recorded facts only. It does not claim that `succeeded` means a notification was delivered.
 
-The typed `OperationsReadPort` and its `InternalServiceClient` adapter are implemented and covered by transport and projection tests. The application currently mounts the fail-closed unavailable port. Mounting the adapter requires an approved business-service base URL, service-auth provider, source contract, and deployment configuration; this design does not claim that live business connectivity is enabled.
+The typed `OperationsReadPort` and its `InternalServiceClient` adapter call the existing Business API jobs and notifications projections. Each outbound query is normalized once; the same serialized query is sent upstream and hashed into the short-lived operator assertion. The adapter validates the echoed request ID and exact upstream field allowlist, including the Business API's current `null`-only error and provider-message fields, before mapping into the existing public projection. This local wiring does not establish that production connectivity is configured.
 
 ## Protected routes and permissions
 

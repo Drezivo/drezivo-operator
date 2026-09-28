@@ -1,9 +1,11 @@
 import { AppError } from './errors.js';
+import { isLoopbackHostname } from './internal-service-transport.js';
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const MAX_RESPONSE_BYTES = 1_048_576;
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const allowedMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+const protectedHeaders = new Set(['accept', 'authorization', 'content-type', 'x-request-id', 'x-drezivo-operator-assertion']);
 const dependencyError = () => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business service is unavailable.');
 const invalidResponseError = () => new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The business service returned an invalid response.');
 const authError = () => new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Internal service authentication is unavailable.');
@@ -17,7 +19,7 @@ export type InternalServiceClientOptions = {
   allowInsecureTransport?: boolean;
   maxResponseBytes?: number;
 };
-export type RequestJsonOptions = { requestId: string; method?: string; body?: unknown; headers?: Record<string, string> };
+export type RequestJsonOptions = { requestId: string; method?: string; body?: unknown; headers?: Record<string, string>; operatorAssertion?: string };
 export type JsonResponse<T> = { status: number; data: T | null };
 
 function timeout(value: number | undefined): number {
@@ -29,7 +31,7 @@ function base(value: string, insecure: boolean): URL {
   let parsed: URL;
   try { parsed = new URL(value); } catch { throw new Error('invalid base URL'); }
   if (parsed.username || parsed.password || parsed.search || parsed.hash || !parsed.pathname.endsWith('/')) throw new Error('invalid base URL');
-  if (parsed.protocol !== 'https:' && !(insecure && parsed.protocol === 'http:')) throw new Error('insecure transport');
+  if (parsed.protocol !== 'https:' && !(insecure && parsed.protocol === 'http:' && isLoopbackHostname(parsed.hostname))) throw new Error('insecure transport');
   return parsed;
 }
 function relativeUrl(baseUrl: URL, path: unknown): URL {
@@ -82,8 +84,12 @@ export class InternalServiceClient {
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const headers: Record<string, string> = { Accept: 'application/json', 'X-Request-ID': request.requestId, Authorization: auth };
-      if (request.headers && Object.entries(request.headers).some(([key, value]) => !/^[A-Za-z0-9-]+$/.test(key) || typeof value !== 'string' || value.trim() === '' || /[\r\n]/.test(value))) throw dependencyError();
+      if (request.headers && Object.entries(request.headers).some(([key, value]) => !/^[A-Za-z0-9-]+$/.test(key) || protectedHeaders.has(key.toLowerCase()) || typeof value !== 'string' || value.trim() === '' || /[\r\n]/.test(value))) throw dependencyError();
       Object.assign(headers, request.headers);
+      if (request.operatorAssertion !== undefined) {
+        if (typeof request.operatorAssertion !== 'string' || request.operatorAssertion.trim() === '' || /[\r\n]/.test(request.operatorAssertion)) throw dependencyError();
+        headers['X-Drezivo-Operator-Assertion'] = request.operatorAssertion;
+      }
       if (request.body !== undefined) headers['Content-Type'] = 'application/json';
       const response = await this.fetchImpl(url, { method, headers, body: request.body === undefined ? undefined : JSON.stringify(request.body), redirect: 'error', signal: controller.signal });
       const text = await readBounded(response, this.maxResponseBytes);

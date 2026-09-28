@@ -13,6 +13,9 @@ The facts below were read from the local canonical business sources:
 - `Rentivo/docs/architecture/Drezivo-ERD.dbml`
 - `Rentivo/docs/architecture/Drezivo-Data-Model.md`
 - `Rentivo/docs/architecture/Drezivo-TRD.md`
+- `Rentivo/api/src/db/schema/audit.ts`
+- `Rentivo/api/src/db/migrations/0021_operator_command_audit_v2.sql`
+- `Rentivo/api/src/db/migrations/0022_operator_v2_constraints.sql`
 
 The local folder name is historical; the product and architecture documents identify the business system as Drezivo.
 
@@ -27,15 +30,17 @@ The tenant-owned append-only record has these fields:
 | `tenant_id` | Required UUID and tenant ownership key |
 | `id` | Required UUID; primary key with `tenant_id` |
 | `actor_key` | Required opaque actor identifier |
-| `support_grant_id` | Nullable UUID linked to the tenant's support grant |
+| `support_grant_id` | Nullable UUID linked to the tenant's support grant; current production write paths do not populate this field |
 | `action` | Required bounded action token |
 | `entity_type` | Required bounded entity token |
 | `entity_id` | Nullable UUID |
+| `actor_kind` | Required constrained value: `staff`, `operator`, or `system` |
+| `outcome` | Required constrained value: `succeeded`, `rejected`, or `failed` |
 | `redacted_summary` | Required JSON document; sensitive before/after payloads are excluded by design |
 | `request_id` | Required request correlation value; the migration and Drizzle schema define `text`, while the ERD documents `uuid` |
 | `created_at` | Required timestamp and ordering fact |
 
-The documented tenant audit model has no separate `actor_kind` column and no `outcome` column. The data-model narrative says the actor namespace can accommodate staff, operator, and system identities, but the current table records the actor only through `actor_key`.
+The current Drizzle schema and migrations include `actor_kind` and `outcome`. Migration 0021 added both columns and backfilled older rows with `system` and `succeeded` when the original record could not prove a more specific actor or result. Migration 0022 then made the columns required and constrained them to `staff | operator | system` and `succeeded | rejected | failed`. Those legacy values are compatibility backfills, not evidence that the original event was performed by a system actor or actually succeeded. Current writes may carry more specific facts. Current production write paths do not populate `support_grant_id`, so its nullability and relationship remain a source-contract question.
 
 ### Support grant: `support_grant`
 
@@ -80,21 +85,21 @@ Global audit reads have additional context rules in the data model: account read
 
 The operator design currently proposes a bounded support activity projection and a route-level filter contract. The following gaps prevent a transport adapter or production projection from being approved.
 
-### 1. Actor-kind mismatch
+### 1. Actor-kind semantics and legacy backfills
 
-The operator projection proposes `actor_kind` values `staff | operator | system`. `global_audit_event` defines `account | operator | system`, while `audit_event` has no `actor_kind` column. There is no approved rule for whether `account` maps to `staff`, whether staff activity is represented by tenant audit rows, or whether an actor kind should remain unknown. No mapping is selected here.
+The current tenant `audit_event` table now constrains `actor_kind` to `staff | operator | system`. The global audit table still defines `account | operator | system`, so a unified projection needs an approved mapping or separate source semantics. Older tenant rows were backfilled by migration 0021 as `system` and `succeeded` because their original records could not prove a more specific actor or result. Those values must be marked as legacy compatibility defaults in any source contract; they must not be presented as original facts. No mapping between global `account` and tenant `staff` is selected here.
 
 ### 2. Request ID schema/documentation drift
 
 The tenant `audit_event` migration (`api/src/db/migrations/0006_outbox_jobs.sql`) and Drizzle schema (`api/src/db/schema/audit.ts`) define `request_id` as `text`. The ERD documents the same field as `uuid`. The global audit migration defines `request_id` as `text` with a 1 to 200 character check, while the ERD documents `varchar(200)`. The operator contract must not assume UUID-only request IDs or silently normalize these representations. Business owners must reconcile the migration, schema source, ERD, and wire contract.
 
-### 3. Tenant audit has no outcome
+### 3. Outcome provenance and support-grant linkage
 
-The operator projection proposes `outcome` values `succeeded | rejected | failed`. `global_audit_event` has `outcome`, but `audit_event` does not. The business owners have not approved whether tenant audit outcomes are inferred, omitted, joined from another fact, or excluded from a unified support activity view. The operator API must not invent an outcome.
+The current tenant `audit_event` table constrains `outcome` to `succeeded | rejected | failed`, but older rows use the migration 0021 compatibility value `succeeded` when the original record could not prove an outcome. Current writes can provide a real result, while the source contract must preserve the distinction between current facts and legacy defaults. In addition, current production write paths do not populate `support_grant_id`; a null value cannot be treated as proof that support access was not involved. The business owners must approve provenance and handling for both values. The operator API must not infer either field.
 
 ### 4. Summary type mismatch
 
-The operator design currently describes `redacted_summary` as nullable bounded text or an approved structured summary. Both canonical audit tables define `redacted_summary` as required JSON. No approved wire representation, maximum serialized size, redaction transform, or nullability rule exists. The adapter must not stringify arbitrary JSON or expose it unchanged without approval.
+The canonical audit tables define `redacted_summary` as required JSONB/JSON data. The operator design proposes a nullable bounded text or approved structured DTO. No approved wire representation, maximum serialized size, redaction transform, or nullability rule exists. The adapter must not stringify arbitrary JSON or expose it unchanged without approval.
 
 ### 5. Source authority is unresolved
 
@@ -118,7 +123,7 @@ Before implementation or live adapter mounting, business, security, and privacy 
 
 1. The authoritative source: tenant audit, global audit, or an explicitly defined union.
 2. Actor-kind semantics, including treatment of `account`, staff identities, operators, and system actors.
-3. Outcome semantics for tenant audit rows that currently lack an outcome.
+3. Outcome provenance for tenant audit rows whose stored value may be the legacy `succeeded` backfill.
 4. The canonical wire type for JSON summaries, redaction transform, size limit, and nullability.
 5. Tenant, account, and support-grant scope rules, including reads after expiry or revocation.
 6. Action and entity-type allowlists and their versioning policy.

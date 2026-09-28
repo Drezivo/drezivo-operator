@@ -39,7 +39,13 @@ Run integration tests against a disposable Neon-compatible database before any d
 
 ## Environment names
 
-Deployment configuration is supplied by the host and is never committed. The service expects `NODE_ENV`, `PORT`, `CLERK_SECRET_KEY`, and `OPERATOR_CLERK_ORGANIZATION_ID`. Missing Clerk configuration must leave protected routes unavailable rather than granting access.
+Deployment configuration is supplied by the host and is never committed. The root `.env.example` contains safe local defaults and blank secret placeholders. Copy it to `.env` for local work and fill in credentials through an approved source; never commit `.env`.
+
+The operator API requires a Clerk secret key, publishable key, and the exact operator organization ID. Both Clerk keys must come from the same Drezivo-internal Development instance. The Operator Web is configured separately and must use that instance's publishable key too. See [Clerk operator setup](docs/CLERK-OPERATOR-SETUP.md) for the Dashboard procedure, role mapping, and supported environment aliases. Missing or incomplete Clerk configuration must leave protected routes unavailable rather than granting access.
+
+The Overview bridge also requires `INTERNAL_OPERATOR_ASSERTION_SECRET`, a shared secret of at least 32 UTF-8 bytes that matches the Business API verifier. Keep it in deployment secret configuration; do not commit its value. Without it, the Overview read fails closed before making an upstream request.
+
+For local development, set `OPERATOR_API_HOST=127.0.0.1` in the process environment to accept connections only through loopback. The validated default is `0.0.0.0`, which preserves the deployed bind behavior.
 
 ## Review focus
 
