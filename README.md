@@ -34,6 +34,27 @@ Sign-in lives at `/sign-in` with an optional catch-all segment so Clerk can comp
 
 If Clerk is not configured, the page explains which public key is missing and does not show the console. If the API URL is missing or malformed, a setup state explains the required value and no request is sent. API data is never seeded with local examples. Unavailable routes, denied access, network errors, and empty API results have separate states.
 
+## Clients (operator MVP)
+
+`/?view=clients` is the day-to-day screen for the first client businesses. It lists every business
+with its account status, plan, trial or paid-until date and staff counts (search by name, storefront
+slug or ID). **Manage** opens one business, where an operator can:
+
+- lock or unlock the business (staff keep read-only access while locked),
+- set the last trial day, or mark the subscription as paid after verifying a GCash, Maya, bank or cash payment,
+- correct the business name or time zone,
+- suspend or reactivate a staff member,
+- read the business's recent activity.
+
+Every action needs a reason (stored in the audit log), disables all buttons while it is in flight, and
+reuses the same `Idempotency-Key` if it is retried, so a double click or a retry never applies twice.
+Dates are shown in Manila time; a date picker value means "until 23:59:59 that day, Manila time".
+The data and rules come from the Operator API `/api/v1/tenants*` routes (see the Operator API's
+`docs/OPERATOR-TENANT-ADMIN-MVP.md`). Staff are listed by Clerk user ID; names and emails are in the
+business Clerk dashboard.
+
+Environment variables are documented above. Never commit any `.env*` file, including examples.
+
 ## Connected API views
 
 The console uses the `/api/v1` routes for overview, businesses, subscriptions, business entitlements, audit events, operators, jobs, and notifications. Job and notification retries require an operator-provided reason. A retry sends that exact reason and an `Idempotency-Key` tied to the reason text. A failed retry keeps its key so a repeated request replays the same intent. Editing the reason starts a new intent. Requests use `cache: no-store`.

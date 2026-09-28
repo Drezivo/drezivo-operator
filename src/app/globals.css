@@ -341,3 +341,24 @@ tr:hover td { background: #fbfcfe; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Clients (operator MVP business administration) */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.button-danger { min-width: 120px; border: 1px solid #b42318; color: white; background: #b42318; }
+.button-danger:hover:not(:disabled) { background: #912018; }
+.button-danger:disabled { opacity: .65; cursor: wait; }
+.clients { display: grid; gap: 16px; }
+.clients-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.clients-search { display: grid; gap: 6px; min-width: min(360px, 100%); font-size: var(--text-xs); font-weight: 600; color: var(--body); }
+.clients-search input { min-height: var(--control-height); padding: 0 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); }
+.clients-footnote { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: var(--text-xs); }
+.client-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+.client-summary, .client-members, .client-audit { max-width: none; }
+.client-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 20px; margin: 16px 0 0; }
+.client-facts dt { color: #8190a9; font-size: var(--text-xs); }
+.client-facts dd { margin: 2px 0 0; color: var(--ink); }
+.client-attention { margin: 14px 0 0; padding: 10px 12px; border-radius: 7px; background: var(--surface-blue, #f3f7fd); font-weight: 600; }
+.client-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.client-action { max-width: none; }
+.audit-list { display: grid; gap: 8px; margin: 12px 0; padding: 0; list-style: none; font-size: var(--text-xs); }
