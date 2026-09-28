@@ -11,7 +11,8 @@ organization), return `Cache-Control: no-store`, and use the standard envelope
 | Method | Path | Permission | Body | What it does |
 |---|---|---|---|---|
 | GET | `/tenants` | `tenant.admin.read` | — | Businesses (newest first, max 200) with status, plan, subscription dates and staff counts |
-| GET | `/tenants/:tenantId` | `tenant.admin.read` | — | One business plus staff list and its last 20 audit events |
+| GET | `/tenants/:tenantId` | `tenant.admin.read` | — | One business plus staff list (with name/email when the directory is configured) and its last 20 audit events |
+| GET | `/people` | `tenant.admin.read` | — | Every staff member across all businesses: business, role, status, and name, email, last sign-in, banned/locked from the business Clerk instance |
 | POST | `/tenants/:tenantId/profile` | `tenant.admin.manage` | `{ name?, timezone?, reason }` | Edit business name and/or IANA time zone |
 | POST | `/tenants/:tenantId/lock` | `tenant.admin.manage` | `{ reason }` | Business → `restricted`: staff keep read-only context, every permission-gated action is denied |
 | POST | `/tenants/:tenantId/unlock` | `tenant.admin.manage` | `{ reason }` | Business → `active`. Refused (409) while the subscription itself is restricted or cancelled |
@@ -35,14 +36,18 @@ internal details are returned).
 |---|---|---|
 | `OPERATOR_TENANT_ADMIN_DATABASE_URL` | to enable the routes | `postgres://drezivo_app:…@host:port/db`. Use the business runtime role, never `postgres` or `service_role` — the adapter refuses roles that bypass RLS. On Supabase use the transaction pooler (port 6543). |
 | `OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE` | in production | Path to the database CA certificate (Supabase: Project Settings → Database → SSL certificate). TLS is verified against it. |
+| `BUSINESS_CLERK_SECRET_KEY` | optional | Secret key of the **business** Clerk instance (where shop owners and staff sign in), not the operator instance. Used only to show staff names, emails and last sign-in. If unset or Clerk is slow (> 4 s), staff are listed by Clerk user ID and `profile` is `null`. |
 
-Without `OPERATOR_TENANT_ADMIN_DATABASE_URL` every `/tenants` route returns 503.
+Without `OPERATOR_TENANT_ADMIN_DATABASE_URL` every `/tenants` and `/people` route returns 503.
+
+Operator session tokens are accepted only when minted for an origin in `OPERATOR_CORS_ORIGINS`
+(Clerk `authorizedParties`), and `INTERNAL_SERVICE_AUTH` must be at least 32 bytes.
 
 ## Staff names and emails
 
-The business database stores Clerk user IDs, not names or emails. The staff list shows
-`clerk_user_id`; look the person up in the business Clerk dashboard. Showing names and emails needs a
-business-Clerk read adapter (next step, not in this MVP).
+The business database stores Clerk user IDs, not names or emails. With `BUSINESS_CLERK_SECRET_KEY`
+set, every member carries `profile: { email, name, last_sign_in_at, banned, locked }` read from the
+business Clerk instance in batches of 100. This is display data only; nothing is authorized from it.
 
 ## Tests
 

@@ -13,9 +13,10 @@ import { createOperatorSupportGrantRouter, unavailableSupportGrantCommandPort } 
 import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from './operator-retry/index.js';
 import { createOperatorTenantAdminRouter, unavailableTenantAdminPort, type TenantAdminPort } from './operator-tenant-admin/index.js';
 import { createTenantAdminDbAdapter } from './integrations/tenant-admin-db/index.js';
+import { createBusinessUserDirectory, emptyBusinessUserDirectory, type BusinessUserDirectory } from './integrations/business-user-directory/index.js';
 import { createRateLimitMiddleware } from './rate-limit.js';
 import { createConfiguredAuthorizationPort, createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from './operator-authorization.js';
-import { config, isDevelopmentLoopbackHttpEnabled, isInternalServiceConfigured, isTenantAdminConfigured, tenantAdminDatabaseCa } from './config.js';
+import { config, isDevelopmentLoopbackHttpEnabled, isInternalServiceConfigured, isBusinessUserDirectoryConfigured, isTenantAdminConfigured, tenantAdminDatabaseCa } from './config.js';
 import { createBusinessReadAdapter } from './integrations/business-read/index.js';
 import { createBillingReadAdapter } from './integrations/billing-read/index.js';
 import { createAnalyticsReadAdapter } from './integrations/analytics-read/index.js';
@@ -57,6 +58,7 @@ export function createApp(
   protectedRateLimit = createRateLimitMiddleware(),
   authorizationPort: AuthorizationPort = denyAuthorizationPort,
   tenantAdminPort: TenantAdminPort = unavailableTenantAdminPort,
+  businessUserDirectory: BusinessUserDirectory = emptyBusinessUserDirectory,
 ) {
   const app = express();
   const requireAuthorizedOperator = requireOperator({ membershipResolver: authorizationPort.resolveMembership });
@@ -91,7 +93,7 @@ export function createApp(
   app.use('/api/v1', createOperatorOperationsRouter(operationsPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorSupportGrantRouter(supportGrantPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorRetryRouter(retryPort, requireAuthorizedOperator, { permissionMiddleware }));
-  app.use('/api/v1', createOperatorTenantAdminRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware }));
+  app.use('/api/v1', createOperatorTenantAdminRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware, directory: businessUserDirectory }));
   app.use(notFound);
   app.use(errorHandler);
   return app;
@@ -101,4 +103,8 @@ const configuredTenantAdminPort: TenantAdminPort = isTenantAdminConfigured()
   ? createTenantAdminDbAdapter({ connectionString: config.OPERATOR_TENANT_ADMIN_DATABASE_URL!, caCertificate: tenantAdminDatabaseCa() })
   : unavailableTenantAdminPort;
 
-export const app = createApp(createRateLimitMiddleware(), createConfiguredAuthorizationPort(), configuredTenantAdminPort);
+const configuredBusinessUserDirectory: BusinessUserDirectory = isBusinessUserDirectoryConfigured()
+  ? createBusinessUserDirectory({ secretKey: config.BUSINESS_CLERK_SECRET_KEY! })
+  : emptyBusinessUserDirectory;
+
+export const app = createApp(createRateLimitMiddleware(), createConfiguredAuthorizationPort(), configuredTenantAdminPort, configuredBusinessUserDirectory);

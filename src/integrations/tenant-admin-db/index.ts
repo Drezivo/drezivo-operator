@@ -3,6 +3,7 @@ import { AppError } from '../../errors.js';
 import type {
   CommandContext,
   CommandResult,
+  PersonRow,
   TenantAdminPort,
   TenantAuditEntry,
   TenantDetail,
@@ -201,20 +202,39 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     });
   }
 
+  async function allTenants(): Promise<TenantRow[]> {
+    const client = await pool.connect();
+    try {
+      await verifyRole(client);
+      // `tenant` is a global table (no tenant RLS); tenant-owned rows are read per tenant under RLS.
+      const result = await client.query<TenantRow>(
+        `SELECT id, name, slug, status, timezone, created_at FROM tenant ORDER BY created_at DESC LIMIT ${TENANT_LIST_LIMIT}`,
+      );
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
   return {
-    async listTenants() {
-      const client = await pool.connect();
-      let tenants: TenantRow[];
-      try {
-        await verifyRole(client);
-        // `tenant` is a global table (no tenant RLS); subscription and membership are read per tenant below.
-        const result = await client.query<TenantRow>(
-          `SELECT id, name, slug, status, timezone, created_at FROM tenant ORDER BY created_at DESC LIMIT ${TENANT_LIST_LIMIT}`,
-        );
-        tenants = result.rows;
-      } finally {
-        client.release();
+    async listPeople() {
+      const people: PersonRow[] = [];
+      for (const tenant of await allTenants()) {
+        const rows = await transaction(tenant.id, 'operator:list', async (client) => (await client.query<{
+          id: string; clerk_user_id: string; role: PersonRow['role']; status: PersonRow['status']; created_at: Date;
+        }>('SELECT id, clerk_user_id, role, status, created_at FROM membership WHERE tenant_id = $1 ORDER BY role, created_at', [tenant.id])).rows);
+        for (const row of rows) {
+          people.push({
+            tenant_id: tenant.id, tenant_name: tenant.name, tenant_status: tenant.status, membership_id: row.id,
+            clerk_user_id: row.clerk_user_id, role: row.role, status: row.status, created_at: row.created_at.toISOString(),
+          });
+        }
       }
+      return people;
+    },
+
+    async listTenants() {
+      const tenants = await allTenants();
       const summaries: TenantSummary[] = [];
       for (const tenant of tenants) {
         summaries.push(await transaction(tenant.id, 'operator:list', (client) => summaryOf(client, tenant)));

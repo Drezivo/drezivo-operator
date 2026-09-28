@@ -17,10 +17,11 @@ const result = { tenant: detail, changed: true, replayed: false };
 
 function port(overrides: Partial<TenantAdminPort> = {}): TenantAdminPort {
   return {
-    listTenants: async () => [detail], getTenant: async () => detail, updateProfile: async () => result, setTenantLocked: async () => result,
+    listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, updateProfile: async () => result, setTenantLocked: async () => result,
     setMemberSuspended: async () => result, setTrialEnd: async () => result, activateSubscription: async () => result, ...overrides,
   };
 }
+const directory = { lookup: async (ids: readonly string[]) => new Map(ids.filter((id) => id === 'user_owner_a').map((id) => [id, { email: 'owner@luna.ph', name: 'Luna Owner', last_sign_in_at: null, banned: false, locked: false }] as const)) };
 function app(p: TenantAdminPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next(), withPrincipal = true) {
   const a = express();
   a.use(express.json());
@@ -29,7 +30,7 @@ function app(p: TenantAdminPort, permission = (_name: string) => (_req: Request,
     if (withPrincipal) res.locals.operatorPrincipal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_op', roles: ['platform_owner'], requestId: 'req' };
     next();
   });
-  a.use('/api/v1', createOperatorTenantAdminRouter(p, (_req, _res, next) => next(), { permissionMiddleware: permission, now: () => now }));
+  a.use('/api/v1', createOperatorTenantAdminRouter(p, (_req, _res, next) => next(), { permissionMiddleware: permission, now: () => now, directory }));
   a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const typed = e as { status?: number; code?: string; message?: string };
     res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } });
@@ -48,6 +49,22 @@ describe('operator tenant administration boundary', () => {
     expect((await request(a).get(`/api/v1/tenants/${tenantId}`)).body.data.name).toBe('Luna Gowns');
     expect(seen).toContain('tenant.admin.read');
     expect(seen).toContain('tenant.admin.manage');
+  });
+
+  it('lists people across businesses and adds names and emails from the business directory', async () => {
+    const people = [
+      { tenant_id: tenantId, tenant_name: 'Luna Gowns', tenant_status: 'active' as const, membership_id: membershipId, clerk_user_id: 'user_owner_a', role: 'owner' as const, status: 'active' as const, created_at: '2026-09-20T00:00:00.000Z' },
+      { tenant_id: tenantId, tenant_name: 'Luna Gowns', tenant_status: 'active' as const, membership_id: membershipId, clerk_user_id: 'user_unknown', role: 'frontdesk' as const, status: 'active' as const, created_at: '2026-09-20T00:00:00.000Z' },
+    ];
+    const r = await request(app(port({ listPeople: async () => people }))).get('/api/v1/people');
+    expect(r.status).toBe(200);
+    expect(r.body.data.items[0].profile.email).toBe('owner@luna.ph');
+    expect(r.body.data.items[1].profile).toBeNull();
+    const withMember = { ...detail, members: [{ membership_id: membershipId, clerk_user_id: 'user_owner_a', role: 'owner' as const, status: 'active' as const, created_at: '2026-09-20T00:00:00.000Z' }] };
+    const d = await request(app(port({ getTenant: async () => withMember }))).get(`/api/v1/tenants/${tenantId}`);
+    expect(d.body.data.members[0].profile.name).toBe('Luna Owner');
+    const c = await request(app(port({ setTenantLocked: async () => ({ ...result, tenant: withMember }) }))).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({ reason: 'Unpaid invoice' });
+    expect(c.body.data.tenant.members[0].profile.email).toBe('owner@luna.ph');
   });
 
   it('returns 404 for an unknown business and 400 for a malformed identifier', async () => {

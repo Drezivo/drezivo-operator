@@ -17,6 +17,8 @@ const schema = z.object({
   INTERNAL_OPERATOR_ASSERTION_SECRET: z.string().optional(),
   OPERATOR_TENANT_ADMIN_DATABASE_URL: z.string().optional(),
   OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE: z.string().optional(),
+  // Secret key of the BUSINESS Clerk instance (tenant staff), used only to show staff names and emails.
+  BUSINESS_CLERK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, 'Must be a Clerk secret key.').optional(),
 }).superRefine((value, context) => {
   if (value.OPERATOR_TENANT_ADMIN_DATABASE_URL) {
     let protocol = '';
@@ -27,6 +29,9 @@ const schema = z.object({
     if (value.NODE_ENV === 'production' && !value.OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE) {
       context.addIssue({ code: 'custom', path: ['OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE'], message: 'Production requires the database CA certificate for verified TLS.' });
     }
+  }
+  if (value.INTERNAL_SERVICE_AUTH && Buffer.byteLength(value.INTERNAL_SERVICE_AUTH, 'utf8') < 32) {
+    context.addIssue({ code: 'custom', path: ['INTERNAL_SERVICE_AUTH'], message: 'Must contain at least 32 UTF-8 bytes.' });
   }
   if (value.INTERNAL_OPERATOR_ASSERTION_SECRET && Buffer.byteLength(value.INTERNAL_OPERATOR_ASSERTION_SECRET, 'utf8') < 32) {
     context.addIssue({ code: 'custom', path: ['INTERNAL_OPERATOR_ASSERTION_SECRET'], message: 'Must contain at least 32 UTF-8 bytes.' });
@@ -100,6 +105,10 @@ export const config = {
 
 export function isClerkConfigured(): boolean {
   return Boolean(config.CLERK_SECRET_KEY && config.CLERK_PUBLISHABLE_KEY && config.OPERATOR_CLERK_ORGANIZATION_ID);
+}
+
+export function isBusinessUserDirectoryConfigured(): boolean {
+  return Boolean(config.BUSINESS_CLERK_SECRET_KEY);
 }
 
 export function isTenantAdminConfigured(): boolean {

@@ -92,3 +92,24 @@ describe('internal service transport configuration', () => {
     expect(isDevelopmentLoopbackHttpConfiguration({ nodeEnv: 'development', enabled: true, baseUrl: 'http://localhost.evil:5081/' })).toBe(false);
   });
 });
+
+describe('secret and database configuration rules', () => {
+  it('rejects an internal service credential shorter than 32 bytes without echoing it', async () => {
+    vi.stubEnv('INTERNAL_SERVICE_AUTH', 'short-secret-value');
+    await expect(import('../src/config.js')).rejects.toThrow(/INTERNAL_SERVICE_AUTH/);
+    vi.resetModules();
+    vi.stubEnv('INTERNAL_SERVICE_AUTH', 'x'.repeat(32));
+    await expect(import('../src/config.js')).resolves.toBeDefined();
+  });
+
+  it('requires a CA certificate for the tenant-admin database in production', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OPERATOR_CORS_ORIGINS', 'https://operator.example.com');
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'postgres://drezivo_app:pw@db.example.com:6543/postgres');
+    await expect(import('../src/config.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE/);
+    vi.resetModules();
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'mysql://nope');
+    await expect(import('../src/config.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_URL/);
+  });
+});

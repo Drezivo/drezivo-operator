@@ -76,6 +76,11 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
     expect(await adapter.getTenant('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
+  it('lists people across every business under RLS', async () => {
+    const people = await adapter.listPeople();
+    expect(people.map((p) => `${p.tenant_name}:${p.clerk_user_id}:${p.role}`).sort()).toEqual(['barong-hub:user_owner_b:owner', 'luna-gowns:user_owner_a:owner']);
+  });
+
   it('lock is duplicate-safe: a sequential retry with the same key replays without a second audit row', async () => {
     const context = ctx('Unpaid invoice');
     const first = await adapter.setTenantLocked(tenantA, true, context);

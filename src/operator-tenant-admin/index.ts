@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
+import { emptyBusinessUserDirectory, type BusinessUserDirectory, type BusinessUserProfile } from '../integrations/business-user-directory/index.js';
 
 /**
  * Operator MVP for the first client businesses: list and view businesses and their staff, and run
@@ -44,7 +45,11 @@ export type TenantMember = {
   role: 'owner' | 'frontdesk';
   status: z.infer<typeof membershipStatusSchema>;
   created_at: string;
+  /** Name/email from the business Clerk instance; null when unknown or the directory is not configured. */
+  profile?: BusinessUserProfile | null;
 };
+
+export type PersonRow = Omit<TenantMember, 'profile'> & { tenant_id: string; tenant_name: string; tenant_status: z.infer<typeof tenantStatusSchema> };
 
 export type TenantAuditEntry = {
   occurred_at: string;
@@ -67,6 +72,7 @@ export const activateInputSchema = z.object({ current_period_end: isoDate, reaso
 
 export type TenantAdminPort = {
   listTenants(): Promise<TenantSummary[]>;
+  listPeople(): Promise<PersonRow[]>;
   getTenant(tenantId: string): Promise<TenantDetail | null>;
   updateProfile(tenantId: string, change: { name?: string; timezone?: string }, context: CommandContext): Promise<CommandResult>;
   setTenantLocked(tenantId: string, locked: boolean, context: CommandContext): Promise<CommandResult>;
@@ -78,6 +84,7 @@ export type TenantAdminPort = {
 const unavailable = () => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is not configured.');
 export const unavailableTenantAdminPort: TenantAdminPort = {
   listTenants: async () => { throw unavailable(); },
+  listPeople: async () => { throw unavailable(); },
   getTenant: async () => { throw unavailable(); },
   updateProfile: async () => { throw unavailable(); },
   setTenantLocked: async () => { throw unavailable(); },
@@ -92,7 +99,7 @@ export const tenantAdminPermissions = { read: 'tenant.admin.read', manage: 'tena
 export const MAX_TRIAL_DAYS_AHEAD = 90;
 export const MAX_PERIOD_DAYS_AHEAD = 400;
 
-type Options = { permissionMiddleware?: (permission: string) => RequestHandler; now?: () => Date };
+type Options = { permissionMiddleware?: (permission: string) => RequestHandler; now?: () => Date; directory?: BusinessUserDirectory };
 
 function requestId(res: Response): string { return String(res.locals.requestId ?? 'unknown'); }
 function tenantIdParam(req: Request): string {
@@ -136,9 +143,24 @@ export function createOperatorTenantAdminRouter(
   const now = options.now ?? (() => new Date());
   const permission = options.permissionMiddleware
     ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));
+  const directory = options.directory ?? emptyBusinessUserDirectory;
+  const withProfiles = async (tenant: TenantDetail): Promise<TenantDetail> => {
+    const profiles = await directory.lookup(tenant.members.map((member) => member.clerk_user_id));
+    return { ...tenant, members: tenant.members.map((member) => ({ ...member, profile: profiles.get(member.clerk_user_id) ?? null })) };
+  };
+  const command = async (result: CommandResult) => ({ ...result, tenant: await withProfiles(result.tenant) });
   const read = permission(tenantAdminPermissions.read);
   const manage = permission(tenantAdminPermissions.manage);
   router.use('/tenants', authorize);
+  router.use('/people', authorize);
+
+  router.get('/people', read, async (_req, res, next) => {
+    try {
+      const people = await port.listPeople();
+      const profiles = await directory.lookup(people.map((person) => person.clerk_user_id));
+      send(res, 200, { items: people.map((person) => ({ ...person, profile: profiles.get(person.clerk_user_id) ?? null })) });
+    } catch (error) { forward(next, error); }
+  });
 
   router.get('/tenants', read, async (_req, res, next) => {
     try { send(res, 200, { items: await port.listTenants() }); } catch (error) { forward(next, error); }
@@ -148,7 +170,7 @@ export function createOperatorTenantAdminRouter(
     try {
       const tenant = await port.getTenant(tenantIdParam(req));
       if (!tenant) throw new AppError(404, 'NOT_FOUND', 'The business was not found.');
-      send(res, 200, tenant);
+      send(res, 200, await withProfiles(tenant));
     } catch (error) { forward(next, error); }
   });
 
@@ -157,7 +179,7 @@ export function createOperatorTenantAdminRouter(
       const tenantId = tenantIdParam(req);
       const input = parse(profileInputSchema, req.body, 'Provide a valid name or IANA time zone and a reason.');
       const { reason: text, ...change } = input;
-      send(res, 200, await port.updateProfile(tenantId, change, context(req, res, text)));
+      send(res, 200, await command(await port.updateProfile(tenantId, change, context(req, res, text))));
     } catch (error) { forward(next, error); }
   });
 
@@ -166,7 +188,7 @@ export function createOperatorTenantAdminRouter(
       try {
         const tenantId = tenantIdParam(req);
         const input = parse(reasonInputSchema, req.body, 'A reason of 3 to 500 characters is required.');
-        send(res, 200, await port.setTenantLocked(tenantId, locked, context(req, res, input.reason)));
+        send(res, 200, await command(await port.setTenantLocked(tenantId, locked, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
     });
   }
@@ -178,7 +200,7 @@ export function createOperatorTenantAdminRouter(
         const membershipId = typeof req.params.membershipId === 'string' ? req.params.membershipId : '';
         if (!uuid.safeParse(membershipId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The member identifier is invalid.');
         const input = parse(reasonInputSchema, req.body, 'A reason of 3 to 500 characters is required.');
-        send(res, 200, await port.setMemberSuspended(tenantId, membershipId, suspended, context(req, res, input.reason)));
+        send(res, 200, await command(await port.setMemberSuspended(tenantId, membershipId, suspended, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
     });
   }
@@ -188,7 +210,7 @@ export function createOperatorTenantAdminRouter(
       const tenantId = tenantIdParam(req);
       const input = parse(trialInputSchema, req.body, 'Provide trial_ends_at as an ISO date-time and a reason.');
       const end = futureWithin(input.trial_ends_at, MAX_TRIAL_DAYS_AHEAD, now(), 'The trial end');
-      send(res, 200, await port.setTrialEnd(tenantId, end, context(req, res, input.reason)));
+      send(res, 200, await command(await port.setTrialEnd(tenantId, end, context(req, res, input.reason))));
     } catch (error) { forward(next, error); }
   });
 
@@ -197,7 +219,7 @@ export function createOperatorTenantAdminRouter(
       const tenantId = tenantIdParam(req);
       const input = parse(activateInputSchema, req.body, 'Provide current_period_end as an ISO date-time and a reason.');
       const end = futureWithin(input.current_period_end, MAX_PERIOD_DAYS_AHEAD, now(), 'The paid period end');
-      send(res, 200, await port.activateSubscription(tenantId, end, context(req, res, input.reason)));
+      send(res, 200, await command(await port.activateSubscription(tenantId, end, context(req, res, input.reason))));
     } catch (error) { forward(next, error); }
   });
 

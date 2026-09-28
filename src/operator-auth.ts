@@ -61,7 +61,9 @@ export function clerkContextMiddleware(): RequestHandler {
   if (!isClerkConfigured()) {
     return (_req, _res, next) => next();
   }
-  const clerkHandler = clerkMiddleware();
+  // Only accept session tokens minted for the operator console's own origins (azp claim).
+  const authorizedParties = config.OPERATOR_CORS_ORIGINS.length > 0 ? [...config.OPERATOR_CORS_ORIGINS] : undefined;
+  const clerkHandler = clerkMiddleware({ authorizedParties });
   return createBearerOnlyClerkContext(clerkHandler);
 }
 
