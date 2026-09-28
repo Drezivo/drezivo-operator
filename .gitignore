@@ -1,0 +1,10 @@
+.next/
+.next*/
+node_modules/
+coverage/
+dist/
+*.tsbuildinfo
+/next-env.d.ts
+graphify-out/
+# Never commit any env file, including examples (owner rule).
+.env*
