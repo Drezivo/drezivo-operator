@@ -34,7 +34,7 @@ Sign-in lives at `/sign-in` with an optional catch-all segment so Clerk can comp
 
 If Clerk is not configured, the page explains which public key is missing and does not show the console. If the API URL is missing or malformed, a setup state explains the required value and no request is sent. API data is never seeded with local examples. Unavailable routes, denied access, network errors, and empty API results have separate states.
 
-## Clients (operator MVP)
+## Clients
 
 `/?view=clients` is the day-to-day screen for the first client businesses. It lists every business
 with its account status, plan, trial or paid-until date and staff counts (search by name, storefront
@@ -50,10 +50,21 @@ Every action needs a reason (stored in the audit log), disables all buttons whil
 reuses the same `Idempotency-Key` if it is retried, so a double click or a retry never applies twice.
 Dates are shown in Manila time; a date picker value means "until 23:59:59 that day, Manila time".
 The data and rules come from the Operator API `/api/v1/tenants*` routes (see the Operator API's
-`docs/OPERATOR-TENANT-ADMIN-MVP.md`). The **People** tab lists every owner and staff member across businesses; names,
+`docs/OPERATOR-CLIENT-ADMINISTRATION.md`). The **People** tab lists every owner and staff member across businesses; names,
 emails and last sign-in appear when the Operator API has `BUSINESS_CLERK_SECRET_KEY`, otherwise the Clerk user ID is shown.
 
 Environment variables are documented above. Never commit any `.env*` file, including examples.
+
+### Views in this build
+
+The console shows only views whose Operator API routes and business endpoints are live. By default
+that is **Clients**. Enable more, as their endpoints ship, with a comma-separated list in
+`NEXT_PUBLIC_OPERATOR_VIEWS` (for example `clients,operators`); unknown names are ignored.
+
+Clients state is in the URL, so links and the Back button work: `?view=clients&filter=attention`
+(filters: `attention`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
+`?view=clients&client=<business id>`. Layouts adapt by available width from 320px phones to 3840px
+displays; lists become cards on narrow screens and aligned columns on wide ones.
 
 ## Connected API views
 

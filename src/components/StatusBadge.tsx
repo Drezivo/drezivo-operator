@@ -6,7 +6,8 @@ export function formatStatusLabel(value: string): string {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function StatusBadge({ value }: { value: string }) {
+/** `value` picks the tone; `label` overrides the visible text (defaults to the formatted value). */
+export function StatusBadge({ value, label }: { value: string; label?: string }) {
   const normalized = value.toLowerCase();
   const tone = successStatuses.has(normalized)
     ? "success"
@@ -16,5 +17,5 @@ export function StatusBadge({ value }: { value: string }) {
         ? "danger"
         : "neutral";
 
-  return <span className={`status-badge status-badge-${tone}`}><span aria-hidden="true" />{formatStatusLabel(value)}</span>;
+  return <span className={`status-badge status-badge-${tone}`}><span aria-hidden="true" />{label ?? formatStatusLabel(value)}</span>;
 }

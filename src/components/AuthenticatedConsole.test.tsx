@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedConsole } from "./AuthenticatedConsole";
+import { resources } from "@/lib/resources";
 
 const mocks = vi.hoisted(() => ({
   query: "",
@@ -71,6 +72,8 @@ function analyticsEnvelope() {
 }
 
 beforeEach(() => {
+  // These tests cover every view; the build default enables only the views that are live.
+  process.env.NEXT_PUBLIC_OPERATOR_VIEWS = resources.map((resource) => resource.id).join(",");
   mocks.query = "";
   mocks.getToken.mockReset().mockResolvedValue("operator-session-token");
   mocks.signOut.mockClear();

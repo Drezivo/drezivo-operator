@@ -15,6 +15,24 @@ export const resources = [
 
 export type ResourceId = typeof resources[number]["id"];
 
+/**
+ * Views switched on in this build. Each view needs its Operator API routes and their business-side
+ * endpoints to be live, so views are enabled version by version with NEXT_PUBLIC_OPERATOR_VIEWS
+ * (comma-separated ids, for example "clients,operators"). Unknown ids are ignored.
+ */
+export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["clients"];
+
+export function enabledResourceIds(configured: string | undefined = process.env.NEXT_PUBLIC_OPERATOR_VIEWS): ResourceId[] {
+  const known = new Set<string>(resources.map((resource) => resource.id));
+  const requested = (configured ?? "").split(",").map((id) => id.trim()).filter((id): id is ResourceId => known.has(id));
+  return requested.length > 0 ? [...new Set(requested)] : [...DEFAULT_OPERATOR_VIEWS];
+}
+
+export function visibleResources(configured?: string) {
+  const enabled = new Set(enabledResourceIds(configured));
+  return resources.filter((resource) => enabled.has(resource.id));
+}
+
 export const resourceHelp: Record<ResourceId, string> = {
   overview: "Current platform activity from the operator API.",
   analytics: "Monthly platform trends and additions projected from the operator API. List-price run-rate is not cash income.",

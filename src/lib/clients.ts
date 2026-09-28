@@ -85,6 +85,56 @@ export function daysUntil(value: string | null | undefined, now: Date = new Date
   return Math.ceil((time - now.getTime()) / 86_400_000);
 }
 
+/** A single status per business, in the words an operator uses. */
+export type ClientState = "locked" | "cancelled" | "restricted" | "unpaid" | "trial" | "paid" | "no_subscription";
+
+export function clientState(client: ClientSummary): ClientState {
+  if (client.status === "cancelled" || client.subscription?.status === "cancelled") return "cancelled";
+  if (client.status === "restricted" && client.subscription?.status !== "restricted") return "locked";
+  switch (client.subscription?.status) {
+    case "restricted": return "restricted";
+    case "past_due": return "unpaid";
+    case "trialing": return "trial";
+    case "active": return "paid";
+    default: return "no_subscription";
+  }
+}
+
+export const clientStateLabel: Record<ClientState, string> = {
+  locked: "Locked", cancelled: "Cancelled", restricted: "Restricted", unpaid: "Unpaid", trial: "Trial", paid: "Paid", no_subscription: "No subscription",
+};
+
+/** StatusBadge tone keys for each state (see StatusBadge's status sets). */
+export const clientStateTone: Record<ClientState, string> = {
+  locked: "restricted", cancelled: "cancelled", restricted: "restricted", unpaid: "past_due", trial: "trialing", paid: "active", no_subscription: "unknown",
+};
+
+export type ClientFilter = "attention" | "trial" | "unpaid" | "locked" | "paid" | "all";
+export const TRIAL_ENDING_DAYS = 3;
+
+/** A business needs attention when an operator is likely to act on it today. */
+export function needsAttention(client: ClientSummary, now: Date = new Date()): boolean {
+  const state = clientState(client);
+  if (state === "unpaid" || state === "restricted" || state === "locked" || state === "no_subscription") return true;
+  if (state === "trial") {
+    const left = daysUntil(client.subscription?.trial_ends_at, now);
+    return left !== null && left <= TRIAL_ENDING_DAYS;
+  }
+  return false;
+}
+
+export function matchesFilter(client: ClientSummary, filter: ClientFilter, now: Date = new Date()): boolean {
+  const state = clientState(client);
+  switch (filter) {
+    case "attention": return needsAttention(client, now);
+    case "trial": return state === "trial";
+    case "unpaid": return state === "unpaid" || state === "restricted";
+    case "locked": return state === "locked";
+    case "paid": return state === "paid";
+    default: return true;
+  }
+}
+
 /** One plain sentence describing what an operator should know about a client right now. */
 export function clientAttention(client: ClientSummary, now: Date = new Date()): string {
   if (client.status === "cancelled") return "Cancelled";
