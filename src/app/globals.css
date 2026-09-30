@@ -498,3 +498,27 @@ tr:hover td { background: #fbfcfe; }
   .client-list .field-status, .people-list .field-status { order: -2; }
   .client-list .data-row .row-chevron, .people-list .data-row .row-chevron { position: absolute; top: 18px; right: 14px; }
 }
+
+/* Pilot billing: payment review, operator notes, Drezivo payment methods. */
+.payment-list .row-fields { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 18px; margin: 0; }
+.payment-list .row-fields dt { color: var(--muted); font-size: 11px; font-weight: 600; }
+.payment-list .row-fields dd { margin: 2px 0 0; font-size: var(--text-sm); }
+.payment-list .fact-wide { flex-basis: 100%; }
+.payment-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.payment-actions a.table-action { gap: 4px; text-decoration: none; }
+.inline-link { min-height: 0; padding: 0; color: var(--blue-dark); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.note-form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.note-form label { flex: 1 1 260px; }
+.note-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: inherit; resize: vertical; }
+.note-list { display: grid; margin: 0; padding: 0; list-style: none; }
+.note-list li { padding: 10px 0; border-top: 1px solid #edf0f5; }
+.note-list li:first-child { border-top: 0; }
+.note-meta { margin: 0 0 4px; color: var(--muted); font-size: var(--text-xs); }
+.note-body { margin: 0; color: var(--ink); font-size: var(--text-sm); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.method-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.method-card { display: grid; gap: 12px; }
+.method-card h3 { margin: 0; }
+.method-form input:not([type="checkbox"]):not([type="file"]), .method-form textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); font: inherit; }
+.method-form .checkbox-row { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.field-error { margin: 0; color: var(--danger-ink); font-size: var(--text-xs); }
+.qr-preview { display: block; width: 132px; height: 132px; border: 1px solid var(--border); border-radius: 8px; object-fit: contain; background: white; }

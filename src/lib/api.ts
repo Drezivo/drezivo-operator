@@ -115,6 +115,43 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   }
 }
 
+/**
+ * Binary GET (for example a QR image) with the same base URL, HTTPS rule, session token and timeout
+ * as `apiRequest`. Failures still arrive as the JSON error envelope.
+ */
+export async function apiBlobRequest(path: string, options: Pick<ApiOptions, "token" | "signal"> = {}): Promise<Blob> {
+  if (!path.startsWith("/") || path.startsWith("//")) throw new ApiError("The requested resource path is invalid.", "invalid_response");
+  if (typeof options.token !== "string" || options.token.trim().length === 0) {
+    throw new ApiError("Authentication is required.", "unauthorized", 401, "AUTHENTICATION_REQUIRED");
+  }
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, API_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${apiBase()}${path}`, {
+      headers: { Authorization: `Bearer ${options.token}` },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const kind: ApiFailureKind = response.status === 401 ? "unauthorized" : response.status === 403 ? "forbidden" : response.status === 503 ? "unavailable" : "http";
+      throw new ApiError(`The request failed with status ${response.status}.`, kind, response.status);
+    }
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (timedOut) throw new ApiError("The operator API took too long to respond. Try again.", "network", undefined, "API_REQUEST_TIMEOUT");
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    throw new ApiError("The operator API could not be reached. Check the API address and try again.", "network");
+  } finally {
+    clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 export type Overview = {
   as_of: string;
   businesses: { total: number; by_status: Array<{ status: "active" | "restricted" | "cancelled"; count: number }> };

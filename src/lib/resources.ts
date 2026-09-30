@@ -11,6 +11,8 @@ export const resources = [
   { id: "audit", label: "Audit log", group: "Access and support", path: "/?view=audit" },
   { id: "jobs", label: "Background jobs", group: "Delivery and integrations", path: "/?view=jobs" },
   { id: "notifications", label: "Notifications", group: "Delivery and integrations", path: "/?view=notifications" },
+  { id: "payments", label: "Payments", group: "Customers", path: "/?view=payments" },
+  { id: "payment-methods", label: "Payment methods", group: "Commercial", path: "/?view=payment-methods" },
 ] as const;
 
 export type ResourceId = typeof resources[number]["id"];
@@ -20,7 +22,7 @@ export type ResourceId = typeof resources[number]["id"];
  * endpoints to be live, so views are enabled version by version with NEXT_PUBLIC_OPERATOR_VIEWS
  * (comma-separated ids, for example "clients,operators"). Unknown ids are ignored.
  */
-export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["clients"];
+export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["clients", "payments", "payment-methods"];
 
 export function enabledResourceIds(configured: string | undefined = process.env.NEXT_PUBLIC_OPERATOR_VIEWS): ResourceId[] {
   const known = new Set<string>(resources.map((resource) => resource.id));
@@ -46,4 +48,6 @@ export const resourceHelp: Record<ResourceId, string> = {
   jobs: "Background job status and retry controls.",
   notifications: "Delivery status and retry controls.",
   grants: "Create or revoke temporary support access. A searchable grant history is not available yet.",
+  payments: "Proofs of payment for the ₱300 Standard plan. Check the reference against the account, then approve or reject. The owner is emailed either way.",
+  "payment-methods": "Where businesses pay Drezivo: the GCash, Maya or bank accounts and QR codes shown in their Subscribe dialog.",
 };

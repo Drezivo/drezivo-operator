@@ -11,11 +11,19 @@ const detail: ClientDetail = {
   tenant_id: tenantId, name: "Luna Gowns", slug: "luna-gowns", status: "active", timezone: "Asia/Manila", created_at: "2026-09-20T02:00:00Z",
   subscription: { status: "trialing", plan_code: "starter", trial_ends_at: inDays(2), grace_ends_at: null, current_period_end: inDays(2) },
   member_counts: { active: 1, suspended: 0, removed: 0 },
+  pending_payment: false,
+  notes: [],
+  payments: [],
   members: [{ membership_id: memberId, clerk_user_id: "user_owner_a", role: "owner", status: "active", created_at: "2026-09-20T02:00:00Z" }],
   recent_audit: [{ occurred_at: "2026-09-21T01:00:00Z", actor_kind: "staff", action: "catalogue.item.created", entity_type: "product", outcome: "succeeded" }],
 };
 const paid: ClientDetail = { ...detail, tenant_id: "22222222-2222-4222-8222-222222222222", name: "Barong Hub", slug: "barong-hub",
-  subscription: { status: "active", plan_code: "business", trial_ends_at: null, grace_ends_at: null, current_period_end: inDays(20) } };
+  subscription: { status: "active", plan_code: "starter", trial_ends_at: null, grace_ends_at: null, current_period_end: inDays(20) } };
+const paymentId = "66666666-6666-4666-8666-666666666666";
+const pendingPayment = {
+  payment_id: paymentId, tenant_id: tenantId, tenant_name: "Luna Gowns", status: "pending" as const, amount_minor: "30000", currency: "PHP",
+  reference: "GC-778899", method_label: "GCash", submitted_at: "2026-10-01T02:00:00Z", reviewed_at: null, reviewed_by: null, review_note: null, has_proof: true,
+};
 const envelope = (data: unknown, requestId = "req_test") => new Response(JSON.stringify({ success: true, request_id: requestId, data }), { status: 200 });
 const getToken = vi.fn().mockResolvedValue("operator-session-token");
 
@@ -58,6 +66,32 @@ describe("client helpers", () => {
     expect(matchesFilter(detail, "attention", now)).toBe(true);
     expect(matchesFilter(paid, "attention", now)).toBe(false);
     expect(clientAttention(paid, now)).toContain("Paid until");
+  });
+});
+
+describe("pilot access states", () => {
+  const now = new Date("2026-10-10T00:00:00Z");
+  const withSub = (subscription: Partial<NonNullable<ClientDetail["subscription"]>>, extra: Partial<ClientDetail> = {}): ClientDetail =>
+    ({ ...detail, ...extra, subscription: { ...detail.subscription!, ...subscription } });
+
+  it("follows the business API timeline: trial, view-only, storefront offline, expired", () => {
+    const trialEnd = (days: number) => new Date(now.getTime() + days * 86_400_000).toISOString();
+    expect(clientState(withSub({ trial_ends_at: trialEnd(5) }), now)).toBe("trial");
+    expect(clientState(withSub({ trial_ends_at: trialEnd(-1) }), now)).toBe("view_only");
+    expect(clientAttention(withSub({ trial_ends_at: trialEnd(-1) }), now)).toContain("storefront up, bookings paused");
+    expect(clientAttention(withSub({ trial_ends_at: trialEnd(-5) }), now)).toContain("storefront offline");
+    expect(clientState(withSub({ trial_ends_at: trialEnd(-31) }), now)).toBe("expired");
+    expect(clientState(withSub({ trial_ends_at: trialEnd(-40), grace_ends_at: trialEnd(3) }), now)).toBe("view_only");
+    expect(clientAttention(withSub({ trial_ends_at: trialEnd(-40), grace_ends_at: trialEnd(3) }), now)).toContain("View-only extension until");
+    expect(clientState(withSub({ status: "active", trial_ends_at: null, current_period_end: trialEnd(-2) }), now)).toBe("view_only");
+  });
+
+  it("puts a waiting payment in front of the operator", () => {
+    const paidWithProof = { ...paid, pending_payment: true };
+    expect(matchesFilter(paidWithProof, "pending", now)).toBe(true);
+    expect(matchesFilter(paidWithProof, "attention", now)).toBe(true);
+    expect(matchesFilter(paid, "pending", now)).toBe(false);
+    expect(clientAttention(paidWithProof, now)).toMatch(/^Payment waiting for review · Paid until/);
   });
 });
 
@@ -188,5 +222,68 @@ describe("ClientsPanel", () => {
     mockFetch(() => new Response(JSON.stringify({ success: false, request_id: "req_x", error: { code: "DEPENDENCY_UNAVAILABLE", message: "Business administration is not configured." } }), { status: 503 }));
     render(<Harness />);
     expect(await screen.findByText(/could not provide this view/)).toBeInTheDocument();
+  });
+
+  it("approves a waiting payment once for a double click, with the reason and an Idempotency-Key", async () => {
+    const posts: Array<{ url: string; key: string | null; body: string }> = [];
+    const withPayment = { ...detail, pending_payment: true, payments: [pendingPayment] };
+    mockFetch(async (url, init) => {
+      if (init.method === "POST") {
+        posts.push({ url, key: new Headers(init.headers).get("Idempotency-Key"), body: String(init.body) });
+        return envelope({ tenant: { ...withPayment, pending_payment: false, payments: [{ ...pendingPayment, status: "verified" }] }, changed: true, replayed: false }, "req_approve");
+      }
+      return url.endsWith("/tenants") ? envelope({ items: [withPayment] }) : envelope(withPayment);
+    });
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    fireEvent.change(screen.getByLabelText(/What you checked/), { target: { value: "Reference matched in GCash" } });
+    const confirm = screen.getByRole("button", { name: "Approve payment" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await screen.findByText(/Payment approved\. The owner is emailed/);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toContain(`/tenants/${tenantId}/subscription-payments/${paymentId}/approve`);
+    expect(JSON.parse(posts[0]!.body)).toEqual({ reason: "Reference matched in GCash" });
+    expect(posts[0]!.key).toBeTruthy();
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+  });
+
+  it("fetches a proof link on demand and shows it as a link that opens in a new tab", async () => {
+    const withPayment = { ...detail, payments: [pendingPayment] };
+    mockFetch((url) => url.endsWith("/proof-link")
+      ? envelope({ url: "https://api.example/api/v1/operator/payment-proofs/p1.token", expires_at: "2026-10-01T02:05:00Z" })
+      : url.endsWith("/tenants") ? envelope({ items: [withPayment] }) : envelope(withPayment));
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "View proof" }));
+    const link = await screen.findByRole("link", { name: /Open proof/ });
+    expect(link).toHaveAttribute("href", "https://api.example/api/v1/operator/payment-proofs/p1.token");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("adds an operator note and extends view-only access to the end of a Manila day", async () => {
+    const lapsed = { ...detail, subscription: { ...detail.subscription!, trial_ends_at: inDays(-2), current_period_end: inDays(-2) } };
+    const sent: Array<{ url: string; body: Record<string, unknown> }> = [];
+    mockFetch(async (url, init) => {
+      if (init.method === "POST") {
+        sent.push({ url, body: JSON.parse(String(init.body)) as Record<string, unknown> });
+        const notes = url.endsWith("/notes") ? [{ id: "n1", body: "Paying Friday", author_label: "ops@drezivo.shop", created_at: "2026-10-01T03:00:00Z" }] : [];
+        return envelope({ tenant: { ...lapsed, notes }, changed: true, replayed: false });
+      }
+      return url.endsWith("/tenants") ? envelope({ items: [lapsed] }) : envelope(lapsed);
+    });
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.change(await screen.findByPlaceholderText("Add a note"), { target: { value: "  Paying Friday " } });
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }));
+    expect(await screen.findByText("Paying Friday")).toBeInTheDocument();
+    expect(sent[0]).toEqual({ url: expect.stringContaining(`/tenants/${tenantId}/notes`), body: { body: "Paying Friday" } });
+
+    const card = (await screen.findByRole("heading", { name: "Extend view-only access" })).closest("section")!;
+    fireEvent.click(screen.getByRole("button", { name: "Extend view-only access", expanded: false }));
+    fireEvent.change(card.querySelector("input[type=date]")!, { target: { value: "2026-10-20" } });
+    fireEvent.change(card.querySelector("textarea")!, { target: { value: "Owner paying Friday" } });
+    fireEvent.click(card.querySelector("button[type=submit]")!);
+    await screen.findByText(/View-only access extended\./);
+    expect(sent[1]).toEqual({ url: expect.stringContaining("/read-only-extension"), body: { read_only_until: "2026-10-20T23:59:59+08:00", reason: "Owner paying Friday" } });
   });
 });

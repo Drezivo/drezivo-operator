@@ -4,7 +4,7 @@ import { useAuth, RedirectToSignIn, OrganizationList, OrganizationSwitcher } fro
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowClockwise, Buildings, ChartLineUp, CheckCircle, CircleNotch, ClockCounterClockwise, Command, Gear, House, List, MagnifyingGlass, ShieldCheck, SignOut, Storefront, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Buildings, ChartLineUp, CheckCircle, CircleNotch, ClockCounterClockwise, Command, CreditCard, Gear, House, List, MagnifyingGlass, QrCode, ShieldCheck, SignOut, Storefront, WarningCircle, X } from "@phosphor-icons/react";
 import { ApiError, apiRequest, PageData, resourcePaths, resourceRequest, withCursor } from "@/lib/api";
 import { analyticsPath, parseAnalyticsResponse } from "@/lib/analytics";
 import { resources, ResourceId, resourceHelp, visibleResources } from "@/lib/resources";
@@ -14,6 +14,9 @@ import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
 import { OverviewPanel } from "./OverviewPanel";
 import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ClientsPanel, type ClientsNavigation } from "./ClientsPanel";
+import { PaymentMethodsPanel } from "./PaymentMethodsPanel";
+import { PaymentsPanel } from "./PaymentReview";
+import { CLIENT_FILTERS } from "@/lib/clients";
 import { PaginationControls } from "./PaginationControls";
 import { BrandMark } from "./BrandMark";
 import { StatusBadge } from "./StatusBadge";
@@ -27,7 +30,8 @@ function dependencyForResource(resource: ResourceId): "Business API" | "Clerk op
   return undefined;
 }
 
-const icons = [House, ChartLineUp, Storefront, Buildings, ChartLineUp, ShieldCheck, ClockCounterClockwise, Gear, List, Command, CheckCircle, ShieldCheck];
+// One icon per entry in `resources`, in the same order.
+const icons = [House, ChartLineUp, Storefront, Buildings, ChartLineUp, ShieldCheck, ClockCounterClockwise, Gear, List, Command, CheckCircle, ShieldCheck, CreditCard, QrCode];
 
 function formatLabel(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -90,7 +94,7 @@ export function AuthenticatedConsole() {
   const clientId = searchParams.get("client");
   const clientsTab = searchParams.get("tab") === "people" ? "people" : "businesses";
   const clientsFilterParam = searchParams.get("filter");
-  const clientsFilter = (["attention", "trial", "unpaid", "locked", "paid", "all"] as const).find((value) => value === clientsFilterParam) ?? "attention";
+  const clientsFilter = CLIENT_FILTERS.find((value) => value === clientsFilterParam) ?? "attention";
   const navigateClients = useCallback((next: ClientsNavigation) => {
     const params = new URLSearchParams(window.location.search);
     params.set("view", "clients");
@@ -135,7 +139,7 @@ export function AuthenticatedConsole() {
     if (active.id === "audit") return null;
     if (active.id === "entitlements") return selectedBusiness ? `/businesses/${encodeURIComponent(selectedBusiness)}/entitlements` : null;
     if (active.id === "grants") return null;
-    if (active.id === "clients") return null;
+    if (active.id === "clients" || active.id === "payments" || active.id === "payment-methods") return null;
     if (active.id === "businesses" && businessId) return `/businesses/${encodeURIComponent(businessId)}`;
     if (active.id === "analytics") return analyticsPath(analyticsMonths);
     return resourcePaths[active.id];
@@ -173,7 +177,7 @@ export function AuthenticatedConsole() {
     try {
       const token = await getTokenWithTimeout(getToken, signal);
       if (!isCurrentRequest()) return;
-      if (active.id === "support" || active.id === "grants" || active.id === "clients") return;
+      if (active.id === "support" || active.id === "grants" || active.id === "clients" || active.id === "payments" || active.id === "payment-methods") return;
       const result = await resourceRequest(active.id, path, { token: requireSessionToken(token), signal });
       let data = result.data;
       if (active.id === "analytics") {
@@ -356,6 +360,8 @@ export function AuthenticatedConsole() {
           : active.id === "support" ? <div className="blocked-panel"><span className="blocked-mark"><WarningCircle size={21} /></span><div><span className="eyebrow">Backend contract blocked</span><h2>Support activity is not available yet</h2><p>The API team has blocked this route while business-wire semantics are being resolved. This console will not show guessed or incomplete activity records.</p></div></div>
           : active.id === "grants" ? <div className="grant-stack"><section className="grant-card"><div className="card-heading"><div><span className="eyebrow">Temporary access</span><h2>Create support grant</h2></div><ShieldCheck size={19} /></div><p className="grant-intro">Access requests are validated by the API. Use a specific business, permission set, reason, and access window.</p>{grantNotice && <p className="grant-success" role="status"><CheckCircle size={16} />{grantNotice.message}<RequestId requestId={grantNotice.requestId} /></p>}{grantError && <StatePanel error={grantError} dependency="Business API" onRetry={() => (document.getElementById("grant-form") as HTMLFormElement | null)?.requestSubmit()} />}<form id="grant-form" className="grant-form" onSubmit={createGrant}><label>Business tenant ID<input name="tenant_id" required maxLength={120} /></label><label>Permission codes<input name="permission_codes" required placeholder="billing.read, users.read" /></label><label className="grant-wide">Reason<textarea name="reason" required minLength={8} maxLength={500} rows={3} /></label><label>Starts at<input name="starts_at" type="datetime-local" required /></label><label>Expires at<input name="expires_at" type="datetime-local" required /></label><div className="grant-actions"><small>All values are sent to the API for authoritative validation.</small><button className="button button-primary" type="submit" disabled={pending !== null}>{pending === "support-grant:create" ? <><CircleNotch className="spin" size={15} /> Sending…</> : "Create grant"}</button></div></form></section><section className="grant-card revoke-card"><div className="card-heading"><div><span className="eyebrow">Access control</span><h2>Revoke support grant</h2></div><WarningCircle size={19} /></div><p className="grant-intro">Enter the grant ID from its original API response. The API checks access and current grant state before revoking.</p>{revokeNotice && <p className="grant-success" role="status"><CheckCircle size={16} />{revokeNotice.message}<RequestId requestId={revokeNotice.requestId} /></p>}{revokeError && <StatePanel error={revokeError} dependency="Business API" onRetry={() => (document.getElementById("revoke-form") as HTMLFormElement | null)?.requestSubmit()} />}<form id="revoke-form" className="grant-form revoke-form" onSubmit={revokeGrant}><label>Support grant ID<input name="grant_id" required pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}" title="Enter a valid UUID" /></label><div className="grant-actions"><small>Revocation is checked and recorded by the API.</small><button className="button button-secondary" type="submit" disabled={pending !== null}>{pending?.startsWith("support-grant:revoke:") ? <><CircleNotch className="spin" size={15} /> Sending…</> : "Revoke grant"}</button></div></form></section></div>
           : active.id === "clients" ? <ClientsPanel getToken={getToken} clientId={clientId} tab={clientsTab} filter={clientsFilter} onNavigate={navigateClients} />
+          : active.id === "payments" ? <PaymentsPanel getToken={getToken} onOpenBusiness={(id) => navigateClients({ client: id })} />
+          : active.id === "payment-methods" ? <PaymentMethodsPanel getToken={getToken} />
           : active.id === "entitlements" && !selectedBusiness ? <EmptyPanel title="Choose a business" body="Enter a tenant ID to request its entitlements from the operator API." />
             : state.status === "loading" ? <LoadingPanel />
               : state.status === "error" ? <StatePanel error={state.error} dependency={dependencyForResource(active.id)} onRetry={() => void load()} />

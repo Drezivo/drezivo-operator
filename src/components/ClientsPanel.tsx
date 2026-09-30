@@ -11,6 +11,7 @@ import {
   type ClientCommandResult, type ClientDetail, type ClientFilter, type ClientMember, type ClientSummary, type PersonRow,
 } from "@/lib/clients";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
+import { PaymentReviewList } from "./PaymentReview";
 import { StatusBadge } from "./StatusBadge";
 
 type Load<T> = { status: "loading" } | { status: "ready"; data: T; requestId: string } | { status: "error"; error: ApiError };
@@ -20,6 +21,7 @@ export type ClientsNavigation = { client?: string | null; tab?: ClientsTab; filt
 
 const FILTERS: Array<{ id: ClientFilter; label: string }> = [
   { id: "attention", label: "Needs attention" },
+  { id: "pending", label: "Payment to review" },
   { id: "trial", label: "On trial" },
   { id: "unpaid", label: "Unpaid" },
   { id: "locked", label: "Locked" },
@@ -107,7 +109,7 @@ function BusinessList({ token, filter, onFilter, onOpen }: { token: (signal?: Ab
     </div>
     {rows.length === 0
       ? <EmptyPanel title={all.length === 0 ? "No businesses yet" : filter === "attention" && !text ? "Nothing needs attention" : "No business matches"}
-          body={all.length === 0 ? "Businesses appear here after an owner finishes onboarding." : filter === "attention" && !text ? "No trial ends in the next 3 days, and every business is paid or on trial." : "Try another filter or search term."} />
+          body={all.length === 0 ? "Businesses appear here after an owner finishes onboarding." : filter === "attention" && !text ? "No payment is waiting, no trial or paid month ends in the next 3 days, and every business has full access." : "Try another filter or search term."} />
       : <ul className="data-list client-list" aria-label="Businesses">
         <li className="data-list-head" aria-hidden="true"><span>Business</span><span>Status</span><span>What to know</span><span>Plan</span><span>Staff</span><span>Joined</span><span /></li>
         {rows.map((client) => {
@@ -210,6 +212,8 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
   const busy = pending !== null;
   const locked = state === "locked";
   const canSetTrial = subscription !== null && subscription.status !== "active" && subscription.status !== "cancelled";
+  const canExtendViewOnly = state === "view_only" || state === "expired";
+  const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
   const trialDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.trial_ends_at ? new Date(subscription.trial_ends_at).getTime() : 0)), 7);
   const paidDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.status === "active" ? new Date(subscription.current_period_end).getTime() : 0)), 30);
 
@@ -239,6 +243,20 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
         </section>
 
         <section className="panel">
+          <h3>Payments</h3>
+          <p className="muted panel-intro">Proofs the owner sent from Subscribe. Approving gives one more paid month from the later of today or the current end date, and emails the owner.</p>
+          {client.payments.length === 0 ? <p className="muted">No payments sent yet.</p>
+            : <PaymentReviewList payments={client.payments} token={token}
+              onReviewed={(result, requestId, decision) => {
+                setDetail({ status: "ready", data: result.tenant, requestId });
+                setNotice({ message: decision === "approve" ? "Payment approved. The owner is emailed and has full access again." : "Payment rejected. The owner sees your reason.", requestId });
+              }} />}
+        </section>
+
+        <NotesSection notes={client.notes} busy={busy} pending={pending === "note"}
+          onAdd={(body) => run("note", clientPaths.notes(tenantId), { body }, "Note added.")} />
+
+        <section className="panel">
           <h3>People with access</h3>
           <p className="muted panel-intro">A suspended person loses access to this business on their next request.</p>
           {client.members.length === 0 ? <EmptyPanel title="No staff records" body="This business has no memberships." />
@@ -263,13 +281,23 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
 
       <aside className="client-side" aria-label="Actions">
         {subscription && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={subscription.status === "active" ? "Extend paid period" : "Record a payment"}
-          description="After you confirm the payment (GCash, Maya, bank transfer or cash), pick the last day it covers."
+          description="Only for a payment the owner did not send through Subscribe (for example cash). Proofs sent in the app are approved under Payments. Pick the last day it covers."
           submitLabel={subscription.status === "active" ? "Save paid period" : "Mark as paid"} busy={busy} pending={pending === "activate"}
           fields={(values, set) => <label>Paid until<input type="date" required value={values.date ?? paidDefault} onChange={(event) => set("date", event.target.value)} /></label>}
           onSubmit={(reason, values) => {
             const end = endOfManilaDay(values.date ?? paidDefault);
             if (!end) { setError(new ApiError("Choose a valid date.", "http")); return Promise.resolve(false); }
             return run("activate", clientPaths.activate(tenantId), { current_period_end: end, reason }, "Payment recorded.");
+          }} />}
+
+        {canExtendViewOnly && <ActionCard id="extend" open={openAction === "extend"} onToggle={setOpenAction} title="Extend view-only access"
+          description="Staff can look but not change anything, and the storefront stays up without bookings, until the end of this day. Up to 90 days ahead."
+          submitLabel="Save view-only date" busy={busy} pending={pending === "extend"}
+          fields={(values, set) => <label>View-only until<input type="date" required value={values.date ?? extensionDefault} onChange={(event) => set("date", event.target.value)} /></label>}
+          onSubmit={(reason, values) => {
+            const end = endOfManilaDay(values.date ?? extensionDefault);
+            if (!end) { setError(new ApiError("Choose a valid date.", "http")); return Promise.resolve(false); }
+            return run("extend", clientPaths.readOnlyExtension(tenantId), { read_only_until: end, reason }, "View-only access extended.");
           }} />}
 
         {canSetTrial && <ActionCard id="trial" open={openAction === "trial"} onToggle={setOpenAction} title="Set trial end" description="Pick the last day of the trial, up to 90 days ahead. A business whose trial lapsed is restored."
@@ -301,6 +329,26 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
       </aside>
     </div>
   </div>;
+}
+
+/** Operator-only notes, newest first. The owner never sees them. */
+function NotesSection({ notes, busy, pending, onAdd }: { notes: ClientDetail["notes"]; busy: boolean; pending: boolean; onAdd: (body: string) => Promise<boolean> }) {
+  const [body, setBody] = useState("");
+  const text = body.trim();
+  return <section className="panel">
+    <h3>Notes</h3>
+    <p className="muted panel-intro">For operators only. Calls, promises to pay, anything the next operator should know.</p>
+    <form className="note-form" onSubmit={async (event) => { event.preventDefault(); if (busy || text.length === 0) return; if (await onAdd(text)) setBody(""); }}>
+      <label><span className="visually-hidden">New note</span>
+        <textarea rows={2} maxLength={2000} value={body} onChange={(event) => setBody(event.target.value)} disabled={busy} placeholder="Add a note" /></label>
+      <button className="button button-secondary" type="submit" disabled={busy || text.length === 0}>{pending ? <><CircleNotch className="spin" size={15} /> Saving…</> : "Add note"}</button>
+    </form>
+    {notes.length === 0 ? <p className="muted">No notes yet.</p>
+      : <ol className="note-list">{notes.map((note) => <li key={note.id}>
+        <p className="note-meta"><span>{note.author_label}</span> · <time dateTime={note.created_at}>{formatManila(note.created_at, true)}</time></p>
+        <p className="note-body">{note.body}</p>
+      </li>)}</ol>}
+  </section>;
 }
 
 function BackButton({ onBack }: { onBack: () => void }) {
