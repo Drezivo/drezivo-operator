@@ -37,7 +37,31 @@ export type TenantSummary = {
     current_period_end: string;
   } | null;
   member_counts: { active: number; suspended: number; removed: number };
+  /** A subscription payment proof is waiting for review. */
+  pending_payment: boolean;
 };
+
+export const subscriptionPaymentStatusSchema = z.enum(['pending', 'verified', 'failed']);
+
+/** One proof of payment a business sent for its Drezivo subscription. */
+export type SubscriptionPaymentRow = {
+  payment_id: string;
+  tenant_id: string;
+  tenant_name: string;
+  status: z.infer<typeof subscriptionPaymentStatusSchema>;
+  amount_minor: string;
+  currency: string;
+  reference: string | null;
+  method_label: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  review_note: string | null;
+  has_proof: boolean;
+};
+
+/** Operator-only note on a business (append-only; businesses never see these). */
+export type TenantNote = { id: string; body: string; author_label: string; created_at: string };
 
 export type TenantMember = {
   membership_id: string;
@@ -59,7 +83,12 @@ export type TenantAuditEntry = {
   outcome: string;
 };
 
-export type TenantDetail = TenantSummary & { members: TenantMember[]; recent_audit: TenantAuditEntry[] };
+export type TenantDetail = TenantSummary & {
+  members: TenantMember[];
+  recent_audit: TenantAuditEntry[];
+  notes: TenantNote[];
+  payments: SubscriptionPaymentRow[];
+};
 
 export type CommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string };
 export type CommandResult = { tenant: TenantDetail; changed: boolean; replayed: boolean };
@@ -69,6 +98,9 @@ export const profileInputSchema = z.object({ name: businessName.optional(), time
 export const reasonInputSchema = z.object({ reason }).strict();
 export const trialInputSchema = z.object({ trial_ends_at: isoDate, reason }).strict();
 export const activateInputSchema = z.object({ current_period_end: isoDate, reason }).strict();
+export const readOnlyExtensionInputSchema = z.object({ read_only_until: isoDate, reason }).strict();
+export const noteInputSchema = z.object({ body: z.string().trim().min(1).max(2000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/) }).strict();
+export const paymentQueueQuerySchema = z.object({ status: z.enum(['pending', 'recent']).default('pending') }).strict();
 
 export type TenantAdminPort = {
   listTenants(): Promise<TenantSummary[]>;
@@ -79,7 +111,16 @@ export type TenantAdminPort = {
   setMemberSuspended(tenantId: string, membershipId: string, suspended: boolean, context: CommandContext): Promise<CommandResult>;
   setTrialEnd(tenantId: string, trialEndsAt: Date, context: CommandContext): Promise<CommandResult>;
   activateSubscription(tenantId: string, currentPeriodEnd: Date, context: CommandContext): Promise<CommandResult>;
+  /** Pilot billing: view-only access (storefront visible, no bookings) until the given date. */
+  extendReadOnly(tenantId: string, readOnlyUntil: Date, context: CommandContext): Promise<CommandResult>;
+  addNote(tenantId: string, body: string, authorLabel: string, context: CommandContext): Promise<CommandResult>;
+  listPayments(filter: 'pending' | 'recent'): Promise<SubscriptionPaymentRow[]>;
+  /** Approve: payment verified, one more paid month, owner emailed. Reject: reason shown to the owner. */
+  reviewPayment(tenantId: string, paymentId: string, decision: 'approve' | 'reject', context: CommandContext): Promise<CommandResult>;
 };
+
+/** Signs 5-minute links to a payment's proof on the business API; absent when not configured. */
+export type ProofLinkSigner = (tenantId: string, paymentId: string) => { url: string; expires_at: string } | null;
 
 const unavailable = () => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is not configured.');
 export const unavailableTenantAdminPort: TenantAdminPort = {
@@ -91,6 +132,10 @@ export const unavailableTenantAdminPort: TenantAdminPort = {
   setMemberSuspended: async () => { throw unavailable(); },
   setTrialEnd: async () => { throw unavailable(); },
   activateSubscription: async () => { throw unavailable(); },
+  extendReadOnly: async () => { throw unavailable(); },
+  addNote: async () => { throw unavailable(); },
+  listPayments: async () => { throw unavailable(); },
+  reviewPayment: async () => { throw unavailable(); },
 };
 
 export const tenantAdminPermissions = { read: 'tenant.admin.read', manage: 'tenant.admin.manage' } as const;
@@ -99,7 +144,12 @@ export const tenantAdminPermissions = { read: 'tenant.admin.read', manage: 'tena
 export const MAX_TRIAL_DAYS_AHEAD = 90;
 export const MAX_PERIOD_DAYS_AHEAD = 400;
 
-type Options = { permissionMiddleware?: (permission: string) => RequestHandler; now?: () => Date; directory?: BusinessUserDirectory };
+type Options = {
+  permissionMiddleware?: (permission: string) => RequestHandler;
+  now?: () => Date;
+  directory?: BusinessUserDirectory;
+  proofLink?: ProofLinkSigner;
+};
 
 function requestId(res: Response): string { return String(res.locals.requestId ?? 'unknown'); }
 function tenantIdParam(req: Request): string {
@@ -153,6 +203,7 @@ export function createOperatorTenantAdminRouter(
   const manage = permission(tenantAdminPermissions.manage);
   router.use('/tenants', authorize);
   router.use('/people', authorize);
+  router.use('/subscription-payments', authorize);
 
   router.get('/people', read, async (_req, res, next) => {
     try {
@@ -223,5 +274,61 @@ export function createOperatorTenantAdminRouter(
     } catch (error) { forward(next, error); }
   });
 
+  router.post('/tenants/:tenantId/read-only-extension', manage, async (req, res, next) => {
+    try {
+      const tenantId = tenantIdParam(req);
+      const input = parse(readOnlyExtensionInputSchema, req.body, 'Provide read_only_until as an ISO date-time and a reason.');
+      const until = futureWithin(input.read_only_until, MAX_TRIAL_DAYS_AHEAD, now(), 'The view-only end');
+      send(res, 200, await command(await port.extendReadOnly(tenantId, until, context(req, res, input.reason))));
+    } catch (error) { forward(next, error); }
+  });
+
+  router.post('/tenants/:tenantId/notes', manage, async (req, res, next) => {
+    try {
+      const tenantId = tenantIdParam(req);
+      const input = parse(noteInputSchema, req.body, 'A note of 1 to 2000 characters is required.');
+      const ctx = context(req, res, 'Operator note');
+      const principal = res.locals.operatorPrincipal as { email?: unknown; clerkUserId: string } | undefined;
+      const author = typeof principal?.email === 'string' && principal.email ? principal.email : ctx.operatorSubject;
+      send(res, 200, await command(await port.addNote(tenantId, input.body, author.slice(0, 120), ctx)));
+    } catch (error) { forward(next, error); }
+  });
+
+  router.get('/subscription-payments', read, async (req, res, next) => {
+    try {
+      const query = parse(paymentQueueQuerySchema, req.query, 'status must be pending or recent.');
+      send(res, 200, { items: await port.listPayments(query.status) });
+    } catch (error) { forward(next, error); }
+  });
+
+  for (const decision of ['approve', 'reject'] as const) {
+    router.post(`/tenants/:tenantId/subscription-payments/:paymentId/${decision}`, manage, async (req, res, next) => {
+      try {
+        const tenantId = tenantIdParam(req);
+        const paymentId = paymentIdParam(req);
+        const input = parse(reasonInputSchema, req.body, decision === 'reject'
+          ? 'Say why the payment was not approved (3 to 500 characters). The business owner sees this.'
+          : 'A reason of 3 to 500 characters is required, for example "Reference matched".');
+        send(res, 200, await command(await port.reviewPayment(tenantId, paymentId, decision, context(req, res, input.reason))));
+      } catch (error) { forward(next, error); }
+    });
+  }
+
+  router.get('/tenants/:tenantId/subscription-payments/:paymentId/proof-link', read, (req, res, next) => {
+    try {
+      const tenantId = tenantIdParam(req);
+      const paymentId = paymentIdParam(req);
+      const link = options.proofLink?.(tenantId, paymentId) ?? null;
+      if (!link) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Viewing payment proofs is not configured.');
+      send(res, 200, link);
+    } catch (error) { forward(next, error); }
+  });
+
   return router;
+}
+
+function paymentIdParam(req: Request): string {
+  const value = typeof req.params.paymentId === 'string' ? req.params.paymentId : '';
+  if (!uuid.safeParse(value).success) throw new AppError(400, 'VALIDATION_FAILED', 'The payment identifier is invalid.');
+  return value;
 }

@@ -13,10 +13,14 @@ import { createOperatorSupportGrantRouter, unavailableSupportGrantCommandPort } 
 import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from './operator-retry/index.js';
 import { createOperatorTenantAdminRouter, unavailableTenantAdminPort, type TenantAdminPort } from './operator-tenant-admin/index.js';
 import { createTenantAdminDbAdapter } from './integrations/tenant-admin-db/index.js';
+import { createProofLinkSigner } from './proof-link.js';
+import { createOperatorPlatformPaymentsRouter, unavailablePlatformPaymentsPort, type PlatformPaymentsPort } from './operator-platform-payments/index.js';
+import { createPlatformPaymentsDbAdapter } from './integrations/platform-payments-db/index.js';
+import type { ProofLinkSigner } from './operator-tenant-admin/index.js';
 import { createBusinessUserDirectory, emptyBusinessUserDirectory, type BusinessUserDirectory } from './integrations/business-user-directory/index.js';
 import { createRateLimitMiddleware } from './rate-limit.js';
 import { createConfiguredAuthorizationPort, createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from './operator-authorization.js';
-import { config, isDevelopmentLoopbackHttpEnabled, isInternalServiceConfigured, isBusinessUserDirectoryConfigured, isTenantAdminConfigured, tenantAdminDatabaseCa } from './config.js';
+import { config, isDevelopmentLoopbackHttpEnabled, isInternalServiceConfigured, isBusinessUserDirectoryConfigured, isProofLinkConfigured, isTenantAdminConfigured, tenantAdminDatabaseCa } from './config.js';
 import { createBusinessReadAdapter } from './integrations/business-read/index.js';
 import { createBillingReadAdapter } from './integrations/billing-read/index.js';
 import { createAnalyticsReadAdapter } from './integrations/analytics-read/index.js';
@@ -59,6 +63,8 @@ export function createApp(
   authorizationPort: AuthorizationPort = denyAuthorizationPort,
   tenantAdminPort: TenantAdminPort = unavailableTenantAdminPort,
   businessUserDirectory: BusinessUserDirectory = emptyBusinessUserDirectory,
+  proofLink?: ProofLinkSigner,
+  platformPaymentsPort: PlatformPaymentsPort = unavailablePlatformPaymentsPort,
 ) {
   const app = express();
   const requireAuthorizedOperator = requireOperator({ membershipResolver: authorizationPort.resolveMembership });
@@ -93,7 +99,8 @@ export function createApp(
   app.use('/api/v1', createOperatorOperationsRouter(operationsPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorSupportGrantRouter(supportGrantPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorRetryRouter(retryPort, requireAuthorizedOperator, { permissionMiddleware }));
-  app.use('/api/v1', createOperatorTenantAdminRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware, directory: businessUserDirectory }));
+  app.use('/api/v1', createOperatorTenantAdminRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware, directory: businessUserDirectory, proofLink }));
+  app.use('/api/v1', createOperatorPlatformPaymentsRouter(platformPaymentsPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use(notFound);
   app.use(errorHandler);
   return app;
@@ -107,4 +114,13 @@ const configuredBusinessUserDirectory: BusinessUserDirectory = isBusinessUserDir
   ? createBusinessUserDirectory({ secretKey: config.BUSINESS_CLERK_SECRET_KEY! })
   : emptyBusinessUserDirectory;
 
-export const app = createApp(createRateLimitMiddleware(), createConfiguredAuthorizationPort(), configuredTenantAdminPort, configuredBusinessUserDirectory);
+// Same database login as business administration (ADR 0025); Drezivo's payment methods live there too.
+const configuredPlatformPaymentsPort: PlatformPaymentsPort = isTenantAdminConfigured()
+  ? createPlatformPaymentsDbAdapter({ connectionString: config.OPERATOR_TENANT_ADMIN_DATABASE_URL!, caCertificate: tenantAdminDatabaseCa() })
+  : unavailablePlatformPaymentsPort;
+
+const configuredProofLink: ProofLinkSigner | undefined = isProofLinkConfigured()
+  ? createProofLinkSigner({ secret: config.OPERATOR_PROOF_LINK_SECRET!, businessApiUrl: config.BUSINESS_API_PUBLIC_URL! })
+  : undefined;
+
+export const app = createApp(createRateLimitMiddleware(), createConfiguredAuthorizationPort(), configuredTenantAdminPort, configuredBusinessUserDirectory, configuredProofLink, configuredPlatformPaymentsPort);

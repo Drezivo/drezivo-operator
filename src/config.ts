@@ -19,6 +19,10 @@ const schema = z.object({
   OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE: z.string().optional(),
   // Secret key of the BUSINESS Clerk instance (tenant staff), used only to show staff names and emails.
   BUSINESS_CLERK_SECRET_KEY: z.string().regex(/^sk_(test|live)_[A-Za-z0-9]+$/, 'Must be a Clerk secret key.').optional(),
+  // Pilot billing: open a business's proof of payment through a 5-minute signed link to the business
+  // API. The secret must equal the business API's OPERATOR_PROOF_LINK_SECRET.
+  OPERATOR_PROOF_LINK_SECRET: z.string().min(32, 'Must be at least 32 characters.').max(200).optional(),
+  BUSINESS_API_PUBLIC_URL: z.string().url().optional(),
 }).superRefine((value, context) => {
   if (value.OPERATOR_TENANT_ADMIN_DATABASE_URL) {
     let protocol = '';
@@ -109,6 +113,10 @@ export function isClerkConfigured(): boolean {
 
 export function isBusinessUserDirectoryConfigured(): boolean {
   return Boolean(config.BUSINESS_CLERK_SECRET_KEY);
+}
+
+export function isProofLinkConfigured(): boolean {
+  return Boolean(config.OPERATOR_PROOF_LINK_SECRET && config.BUSINESS_API_PUBLIC_URL);
 }
 
 export function isTenantAdminConfigured(): boolean {

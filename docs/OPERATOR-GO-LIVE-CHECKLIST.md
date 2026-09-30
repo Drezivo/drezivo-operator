@@ -12,6 +12,7 @@ staff suspension, trial end, mark paid, edit). Tick each item only after checkin
       one). Set it once in the SQL editor as the owner: `ALTER ROLE drezivo_app WITH PASSWORD '<generated>';`
       Store it only in the host's secret manager.
 - [ ] `OPERATOR_TENANT_ADMIN_DATABASE_URL` uses `drezivo_app` and the **transaction pooler** (port 6543).
+- [ ] Pilot billing: business migration `0063_pilot_billing.sql` is applied. `OPERATOR_PROOF_LINK_SECRET` (the same value as the business API) and `BUSINESS_API_PUBLIC_URL` are set. At least one Drezivo payment method with a QR is active under `/platform-payment-methods`.
       Never `postgres`, `service_role`, or any role with `BYPASSRLS` — the API refuses them.
 - [ ] Download the project's SSL CA certificate (Project Settings → Database) and set
       `OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE` to its path on the host. Production refuses to start without it.

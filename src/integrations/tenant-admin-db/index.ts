@@ -4,10 +4,12 @@ import type {
   CommandContext,
   CommandResult,
   PersonRow,
+  SubscriptionPaymentRow,
   TenantAdminPort,
   TenantAuditEntry,
   TenantDetail,
   TenantMember,
+  TenantNote,
   TenantSummary,
 } from '../../operator-tenant-admin/index.js';
 
@@ -31,6 +33,26 @@ type Applied = { changed: boolean; summary: Record<string, unknown> };
 
 const TENANT_LIST_LIMIT = 200;
 const AUDIT_LIMIT = 20;
+const NOTE_LIMIT = 50;
+const TENANT_PAYMENT_LIMIT = 20;
+const PAYMENT_QUEUE_LIMIT = 200;
+
+type PaymentDbRow = {
+  id: string; tenant_id: string; status: SubscriptionPaymentRow['status']; amount_minor: number; currency: string;
+  reference: string | null; method_label: string | null; created_at: Date; reviewed_at: Date | null;
+  reviewed_by: string | null; review_note: string | null; has_proof: boolean;
+};
+const PAYMENT_COLUMNS = `sp.id, sp.tenant_id, sp.status, sp.amount_minor, sp.currency, sp.reference,
+  ppm.label AS method_label, sp.created_at, sp.reviewed_at, sp.reviewed_by, sp.review_note,
+  (sp.proof_file_id IS NOT NULL) AS has_proof`;
+const PAYMENT_FROM = `FROM subscription_payment sp
+  LEFT JOIN platform_payment_method ppm ON ppm.id = sp.payment_method_id`;
+const paymentOf = (row: PaymentDbRow, tenantName: string): SubscriptionPaymentRow => ({
+  payment_id: row.id, tenant_id: row.tenant_id, tenant_name: tenantName, status: row.status,
+  amount_minor: String(row.amount_minor), currency: row.currency, reference: row.reference, method_label: row.method_label,
+  submitted_at: row.created_at.toISOString(), reviewed_at: iso(row.reviewed_at), reviewed_by: row.reviewed_by,
+  review_note: row.review_note, has_proof: row.has_proof,
+});
 
 const conflict = (message: string) => new AppError(409, 'STATE_CONFLICT', message);
 const notFound = (message: string) => new AppError(404, 'NOT_FOUND', message);
@@ -102,6 +124,10 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     );
     const member_counts = { active: 0, suspended: 0, removed: 0 };
     for (const row of counts.rows) member_counts[row.status] = row.count;
+    const pending = await client.query<{ pending: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM subscription_payment WHERE tenant_id = $1 AND status = 'pending') AS pending",
+      [tenant.id],
+    );
     return {
       tenant_id: tenant.id,
       name: tenant.name,
@@ -117,6 +143,7 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
         current_period_end: subscription.current_period_end.toISOString(),
       } : null,
       member_counts,
+      pending_payment: pending.rows[0]?.pending === true,
     };
   }
 
@@ -147,6 +174,15 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
       recent_audit: audit.rows.map((row): TenantAuditEntry => ({
         occurred_at: row.occurred_at.toISOString(), actor_kind: row.actor_kind, action: row.action, entity_type: row.entity_type, outcome: row.outcome,
       })),
+      notes: (await client.query<{ id: string; body: string; author_label: string; created_at: Date }>(
+        `SELECT id, body, author_label, created_at FROM tenant_operator_note
+          WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT ${NOTE_LIMIT}`,
+        [tenant.id],
+      )).rows.map((row): TenantNote => ({ id: row.id, body: row.body, author_label: row.author_label, created_at: row.created_at.toISOString() })),
+      payments: (await client.query<PaymentDbRow>(
+        `SELECT ${PAYMENT_COLUMNS} ${PAYMENT_FROM} WHERE sp.tenant_id = $1 ORDER BY sp.created_at DESC, sp.id DESC LIMIT ${TENANT_PAYMENT_LIMIT}`,
+        [tenant.id],
+      )).rows.map((row) => paymentOf(row, tenant.name)),
     };
   }
 
@@ -346,6 +382,105 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
           changed,
           summary: { prior_status: subscription.status, current_period_end: currentPeriodEnd.toISOString(), tenant_unlocked: tenantUnlocked },
         };
+      });
+    },
+
+    async extendReadOnly(tenantId, readOnlyUntil, ctx) {
+      return command(tenantId, 'subscription.read_only.extend', { kind: 'tenant', id: tenantId }, ctx, async (client) => {
+        const subscription = await subscriptionOf(client, tenantId, true);
+        if (!subscription) throw conflict('The business has no subscription.');
+        if (subscription.status === 'cancelled') throw conflict('A cancelled subscription cannot be extended.');
+        // grace_ends_at is the pilot's "view-only until" date (business migration 0063).
+        const result = await client.query(
+          'UPDATE subscription SET grace_ends_at = $2 WHERE id = $1 AND grace_ends_at IS DISTINCT FROM $2',
+          [subscription.id, readOnlyUntil],
+        );
+        return { changed: result.rowCount === 1, summary: { read_only_until: readOnlyUntil.toISOString(), status: subscription.status } };
+      });
+    },
+
+    async addNote(tenantId, body, authorLabel, ctx) {
+      return command(tenantId, 'tenant.note.add', { kind: 'tenant', id: tenantId }, ctx, async (client) => {
+        await client.query('INSERT INTO tenant_operator_note (tenant_id, body, author_label) VALUES ($1, $2, $3)', [tenantId, body, authorLabel]);
+        // The note text stays out of the audit summary.
+        return { changed: true, summary: { note_length: body.length } };
+      });
+    },
+
+    async listPayments(filter) {
+      const rows: SubscriptionPaymentRow[] = [];
+      for (const tenant of await allTenants()) {
+        const found = await transaction(tenant.id, 'operator:list', async (client) => (await client.query<PaymentDbRow>(
+          `SELECT ${PAYMENT_COLUMNS} ${PAYMENT_FROM}
+            WHERE sp.tenant_id = $1 ${filter === 'pending' ? "AND sp.status = 'pending'" : ''}
+            ORDER BY sp.created_at DESC, sp.id DESC LIMIT ${TENANT_PAYMENT_LIMIT}`,
+          [tenant.id],
+        )).rows);
+        rows.push(...found.map((row) => paymentOf(row, tenant.name)));
+      }
+      // Oldest pending first so nobody waits longest; recent history newest first.
+      rows.sort((a, b) => (filter === 'pending' ? a.submitted_at.localeCompare(b.submitted_at) : b.submitted_at.localeCompare(a.submitted_at)));
+      return rows.slice(0, PAYMENT_QUEUE_LIMIT);
+    },
+
+    async reviewPayment(tenantId, paymentId, decision, ctx) {
+      return command(tenantId, `subscription.payment.${decision}`, { kind: 'subscription_payment', id: paymentId }, ctx, async (client) => {
+        const found = await client.query<{ status: SubscriptionPaymentRow['status']; subscription_id: string }>(
+          'SELECT status, subscription_id FROM subscription_payment WHERE tenant_id = $1 AND id = $2 FOR UPDATE',
+          [tenantId, paymentId],
+        );
+        const payment = found.rows[0];
+        if (!payment) throw notFound('The payment was not found in this business.');
+        const target = decision === 'approve' ? 'verified' : 'failed';
+        if (payment.status === target) return { changed: false, summary: { decision, payment_id: paymentId } };
+        if (payment.status !== 'pending') throw conflict('This payment was already reviewed.');
+
+        await client.query(
+          `UPDATE subscription_payment
+              SET status = $3, reviewed_at = now(), reviewed_by = $4, review_note = $5
+            WHERE tenant_id = $1 AND id = $2 AND status = 'pending'`,
+          [tenantId, paymentId, target, ctx.operatorSubject, decision === 'reject' ? ctx.reason.slice(0, 500) : null],
+        );
+
+        let summary: Record<string, unknown> = { decision, payment_id: paymentId };
+        if (decision === 'approve') {
+          const subscription = await subscriptionOf(client, tenantId, true);
+          if (!subscription) throw conflict('The business has no subscription.');
+          if (subscription.status === 'cancelled') throw conflict('A cancelled subscription cannot be activated here.');
+          // One more month from the later of now, the trial end, or the current paid-through date.
+          const updated = await client.query<{ current_period_end: Date }>(
+            `UPDATE subscription
+                SET current_period_start = CASE WHEN status = 'active' AND current_period_end > now() THEN current_period_start ELSE now() END,
+                    current_period_end = GREATEST(
+                      now(),
+                      CASE WHEN status = 'trialing' THEN COALESCE(trial_ends_at, now()) ELSE now() END,
+                      CASE WHEN status = 'active' THEN current_period_end ELSE now() END
+                    ) + interval '1 month',
+                    status = 'active',
+                    grace_ends_at = NULL
+              WHERE id = $1
+              RETURNING current_period_end`,
+            [subscription.id],
+          );
+          await client.query(
+            `INSERT INTO subscription_event (tenant_id, subscription_id, prior_plan_id, next_plan_id, event_type, effective_at, business_key)
+             VALUES ($1, $2, $3, $3, $4, now(), $5)
+             ON CONFLICT (tenant_id, business_key) DO NOTHING`,
+            [tenantId, subscription.id, subscription.plan_id, subscription.status === 'active' ? 'renewed' : 'converted', `payment:${paymentId}`],
+          );
+          await liftLifecycleRestriction(client, tenantId, subscription.status);
+          summary = { ...summary, current_period_end: updated.rows[0]?.current_period_end.toISOString() ?? null };
+        }
+
+        // The business worker composes and sends the owner's email (this API cannot seal emails).
+        const outcome = decision === 'approve' ? 'approved' : 'rejected';
+        await client.query(
+          `INSERT INTO outbox_event (tenant_id, dedupe_key, event_type, payload)
+           VALUES ($1, $2, 'subscription.payment_reviewed', $3::jsonb)
+           ON CONFLICT DO NOTHING`,
+          [tenantId, `subscription.payment_reviewed:${paymentId}:${outcome}`, JSON.stringify({ payment_id: paymentId, outcome })],
+        );
+        return { changed: true, summary };
       });
     },
 
