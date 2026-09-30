@@ -41,7 +41,10 @@ with its account status, plan, trial or paid-until date and staff counts (search
 slug or ID). **Manage** opens one business, where an operator can:
 
 - lock or unlock the business (staff keep read-only access while locked),
-- set the last trial day, or mark the subscription as paid after verifying a GCash, Maya, bank or cash payment,
+- review the proofs of payment the owner sent: open the proof, then approve or reject with a reason,
+- extend view-only access for a business whose trial or paid month ended,
+- keep operator-only notes (businesses never see them),
+- set the last trial day, or record a payment made outside the app (for example cash),
 - correct the business name or time zone,
 - suspend or reactivate a staff member,
 - read the business's recent activity.
@@ -58,13 +61,27 @@ Environment variables are documented above. Never commit any `.env*` file, inclu
 ### Views in this build
 
 The console shows only views whose Operator API routes and business endpoints are live. By default
-that is **Clients**. Enable more, as their endpoints ship, with a comma-separated list in
+that is **Clients**, **Payments** and **Payment methods**. Enable more, as their endpoints ship, with a comma-separated list in
 `NEXT_PUBLIC_OPERATOR_VIEWS` (for example `clients,operators`); unknown names are ignored.
 
 Clients state is in the URL, so links and the Back button work: `?view=clients&filter=attention`
-(filters: `attention`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
+(filters: `attention`, `pending`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
 `?view=clients&client=<business id>`. Layouts adapt by available width from 320px phones to 3840px
 displays; lists become cards on narrow screens and aligned columns on wide ones.
+
+### Pilot billing
+
+There is one plan, Standard, at ₱300 a month. A business's status follows the business API's access rules:
+**Trial** or **Paid** until the end date, then **View-only** for 30 days (the storefront stays up without
+bookings for the first 3), then **Expired**, where only Subscribe works. **Payment to review** lists
+businesses that sent a proof.
+
+- `/?view=payments` is the queue of proofs, oldest first, with recently reviewed ones one tab away.
+  Approving gives one more paid month and emails the owner. A reject reason is shown to the owner.
+  A proof opens from a link that works for 5 minutes.
+- `/?view=payment-methods` manages where businesses pay Drezivo: GCash, Maya or bank accounts with
+  their QR images (PNG, JPEG or WebP, up to 512 KB). At most 10 are shown to businesses. Methods are
+  turned off, never deleted.
 
 ## Connected API views
 

@@ -4,7 +4,7 @@ import { DEFAULT_OPERATOR_VIEWS, enabledResourceIds, visibleResources } from "./
 describe("enabled operator views", () => {
   it("shows only the live views by default, with Clients first", () => {
     expect(enabledResourceIds(undefined)).toEqual([...DEFAULT_OPERATOR_VIEWS]);
-    expect(visibleResources("").map((view) => view.id)).toEqual(["clients"]);
+    expect(visibleResources("").map((view) => view.id)).toEqual(["clients", "payments", "payment-methods"]);
   });
 
   it("enables configured views in navigation order and ignores unknown or duplicate ids", () => {
