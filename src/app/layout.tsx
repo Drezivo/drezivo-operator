@@ -5,7 +5,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Drezivo Operator",
   description: "Internal operations console for Drezivo.",
-  icons: { icon: "/drezivo-mark.png" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -13,7 +12,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
 
   return (
     <html lang="en">
-      <body>
+      <body suppressHydrationWarning>
         {publishableKey ? (
           <ClerkProvider publishableKey={publishableKey} signInUrl="/sign-in">
             {children}
