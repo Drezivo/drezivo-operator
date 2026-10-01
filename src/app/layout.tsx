@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import { THEME_INIT_SCRIPT } from "../components/theme";
 
 export const metadata: Metadata = {
   title: "Drezivo Operator",
@@ -11,7 +12,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   return (
-    <html lang="en">
+    // The theme script sets data-theme on <html> before hydration, so <html> skips that attribute check.
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body suppressHydrationWarning>
         {publishableKey ? (
           <ClerkProvider publishableKey={publishableKey} signInUrl="/sign-in">
