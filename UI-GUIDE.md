@@ -27,7 +27,15 @@ metadata such as timestamps, request IDs, and environment labels may use 10–11
 
 - `--control-height: 44px` is the minimum target for buttons, navigation items, and primary inputs.
 - `--radius-control: 7px` is for controls; `--radius-card: 9px` is for cards and table frames.
-- Existing brand colors are `--blue`, `--blue-dark`, `--blue-deep`, and `--navy`.
+- The palette is the landing page's atelier system: ivory paper and espresso ink by day, espresso
+  night and champagne by night. The legacy names stay for compatibility: `--blue` is the gold
+  indicator, `--blue-dark` / `--navy` are the filled-control colour and `--blue-deep` its hover;
+  text on those fills is always `--primary-ink` (paper by day, dark ink at night), never white.
+- Type: Bodoni Moda (`--font-display`) for the page title, the brand and the sign-in headline only;
+  Jost for everything else; numbers in tabular Jost. Uppercase labels use 0.3em tracking.
+- Page headings sit on the themed banner art in `public/art` (one composition rendered for light and
+  dark, swapped by CSS). Phones get a bottom tab bar (first four views plus Menu, which opens the
+  same drawer as the hamburger). Unknown routes show the shared Drezivo 404 (`src/app/not-found.tsx`).
 - Semantic status ink/surface/border tokens are success `#176b43` / `#eff9f3` / `#cdebd7`, warning
   `#805000` / `#fff7e8` / `#f1dfb8`, danger `#a12d27` / `#fff1ef` / `#f0d1cd`, and neutral
   `#586174` / `#f1f4f8` / `#dfe5ed`. They map to each `--*-ink`, `--*-surface`, and `--*-border`

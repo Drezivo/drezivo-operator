@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthenticatedConsole } from "./AuthenticatedConsole";
 import { resources } from "@/lib/resources";
@@ -137,6 +137,19 @@ describe("AuthenticatedConsole view routing", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("offers phone tabs for the first views and a Menu tab that opens the navigation drawer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overviewEnvelope()));
+    render(<AuthenticatedConsole />);
+
+    const tabs = screen.getByRole("navigation", { name: "Quick navigation" });
+    expect(within(tabs).getAllByRole("link").length).toBeLessThanOrEqual(4);
+    const menu = within(tabs).getByRole("button", { name: "Menu" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows a clearable no-match state when navigation search finds no view", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overviewEnvelope()));
     render(<AuthenticatedConsole />);
@@ -146,7 +159,8 @@ describe("AuthenticatedConsole view routing", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("No views match “no such view”.");
     fireEvent.click(screen.getByRole("button", { name: "Clear navigation filter" }));
-    expect(screen.getByRole("link", { name: "Overview" })).toBeInTheDocument();
+    // The phone tab bar also links to Overview; this test is about the sidebar navigation.
+    expect(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByText(/No views match/)).not.toBeInTheDocument();
   });
 

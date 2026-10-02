@@ -13,20 +13,20 @@
   --control-height: 44px;
   --radius-control: 7px;
   --radius-card: 9px;
-  --canvas: #fbfdff;
-  --surface: #fff;
-  --surface-soft: #f4f7fb;
-  --surface-blue: #eef4ff;
-  --ink: #12161f;
-  --body: #3a4150;
-  --muted: #6b7280;
-  --muted-blue: #7180a5;
-  --border: #e4eaf4;
-  --border-strong: #d0d5dd;
-  --blue: #2f5fac;
-  --blue-dark: #254c8a;
-  --blue-deep: #1c3a6b;
-  --navy: #122a73;
+  --canvas: #f5efe6;
+  --surface: #fffcf7;
+  --surface-soft: #f1e9dc;
+  --surface-blue: #ece1cf;
+  --ink: #1f1712;
+  --body: #3a2e25;
+  --muted: #6b5e53;
+  --muted-blue: #6b5e53;
+  --border: #e2d7c8;
+  --border-strong: #d3c4b0;
+  --blue: #a07a46;
+  --blue-dark: #1f1712;
+  --blue-deep: #3a2e25;
+  --navy: #1f1712;
   --green: #1a9e5f;
   --amber: #b76e00;
   --red: #c0362c;
@@ -39,22 +39,25 @@
   --danger-ink: #a12d27;
   --danger-surface: #fff1ef;
   --danger-border: #f0d1cd;
-  --neutral-ink: #586174;
-  --neutral-surface: #f1f4f8;
-  --neutral-border: #dfe5ed;
-  --surface-hover: #f7f9fc;
-  --surface-muted: #f0f4fa;
-  --surface-tint: #f8faff;
-  --line-soft: #edf0f5;
-  --border-hover: #b8c7df;
-  --placeholder: #8a94a8;
-  --disabled-ink: #9aa3b1;
-  --accent-ink: #254c8a;
-  --focus: #7ea3e6;
-  --focus-soft: #dce8ff;
+  --neutral-ink: #5b4f45;
+  --neutral-surface: #efe8dd;
+  --neutral-border: #e2d7c8;
+  --surface-hover: #f7f1e8;
+  --surface-muted: #efe8dd;
+  --surface-tint: #faf5ee;
+  --line-soft: #ece3d6;
+  --border-hover: #b9a283;
+  --placeholder: #7a6d61;
+  --disabled-ink: #a89b8e;
+  --accent-ink: #7a5830;
+  --focus: #b48a55;
+  --focus-soft: #f1e4cc;
   --danger-strong: #7f221d;
-  --shadow: 0 8px 30px rgb(25 52 95 / 5%);
-  font-family: 'DM Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --shadow: 0 8px 30px rgb(31 23 18 / 6%);
+  /* Atelier palette (the landing page's): filled controls are --blue-dark with --primary-ink text. */
+  --primary-ink: #f5efe6;
+  --font-display: var(--font-bodoni), 'Bodoni 72', Didot, Georgia, serif;
+  font-family: var(--font-jost), 'Futura', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -128,7 +131,7 @@ h1, h2, p { margin-top: 0; }
 .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .metric-card { display: grid; min-height: 121px; align-content: space-between; padding: 17px 17px 15px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); box-shadow: var(--shadow); }
 .metric-card > span { color: var(--neutral-ink); font-size: var(--text-xs); font-weight: 550; }
-.metric-card strong { color: var(--ink); font: 600 27px 'IBM Plex Mono', ui-monospace, monospace; letter-spacing: -.06em; }
+.metric-card strong { color: var(--ink); font-size: 27px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .metric-card small { color: var(--muted); font-size: 10px; }
 .metric-card > span { font-size: var(--text-xs); }
 .metric-card small { font-size: var(--text-xs); }
@@ -256,7 +259,7 @@ tr:hover td { background: var(--surface-tint); }
 .grant-form .grant-wide { grid-column: 1 / -1; }
 .grant-actions { display: flex; grid-column: 1 / -1; align-items: center; justify-content: space-between; gap: 15px; padding-top: 2px; }
 .grant-actions small { color: var(--muted); font-size: 10px; }
-.button-primary { min-width: 120px; border: 1px solid var(--blue-dark); color: white; background: var(--blue-dark); }
+.button-primary { min-width: 120px; border: 1px solid var(--blue-dark); color: var(--primary-ink); background: var(--blue-dark); }
 .button-primary:hover:not(:disabled) { background: var(--blue-deep); }
 .button-primary:disabled { opacity: .65; cursor: wait; }
 .grant-success { display: flex; align-items: flex-start; gap: 8px; padding: 11px; border: 1px solid var(--success-border); border-radius: 7px; color: var(--success-ink); background: var(--success-surface); font-size: var(--text-xs); line-height: 1.5; }
@@ -274,7 +277,7 @@ tr:hover td { background: var(--surface-tint); }
 .sidebar-backdrop { display: none; }
 .mobile-menu { display: none; }
 .page-footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 25px; padding-top: 13px; border-top: 1px solid var(--border); color: var(--placeholder); font-size: 10px; }
-.skip-link { position: fixed; z-index: 10; top: 8px; left: 8px; padding: 10px 14px; transform: translateY(-150%); border-radius: 6px; color: white; background: var(--navy); }
+.skip-link { position: fixed; z-index: 10; top: 8px; left: 8px; padding: 10px 14px; transform: translateY(-150%); border-radius: 6px; color: var(--primary-ink); background: var(--navy); }
 .skip-link:focus { transform: translateY(0); }
 .setup-screen, .signin-screen { display: grid; min-height: 100dvh; place-items: center; padding: 28px; background: radial-gradient(ellipse at 18% 15%, var(--surface-blue), transparent 44%), var(--canvas); }
 .organization-screen { display: grid; min-height: 100dvh; place-items: center; padding: 24px; background: radial-gradient(ellipse at 18% 15%, var(--surface-blue), transparent 44%), var(--canvas); }
@@ -372,9 +375,9 @@ tr:hover td { background: var(--surface-tint); }
 .filter-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .filter-chip { display: inline-flex; min-height: 40px; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--body); font-size: var(--text-sm); font-weight: 600; cursor: pointer; transition: border-color .15s, background-color .15s; }
 .filter-chip:hover { border-color: var(--border-hover); }
-.filter-chip.active { border-color: var(--blue-dark); background: var(--blue-dark); color: white; }
+.filter-chip.active { border-color: var(--blue-dark); background: var(--blue-dark); color: var(--primary-ink); }
 .chip-count { min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--surface-soft); color: var(--body); font-size: var(--text-xs); font-variant-numeric: tabular-nums; text-align: center; }
-.filter-chip.active .chip-count { background: rgb(255 255 255 / 18%); color: white; }
+.filter-chip.active .chip-count { background: color-mix(in srgb, var(--primary-ink) 18%, transparent); color: var(--primary-ink); }
 .filter-chip.has-alert:not(.active) .chip-count { background: var(--warning-surface); color: var(--warning-ink); box-shadow: inset 0 0 0 1px var(--warning-border); }
 .clients-search-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .clients-search { display: flex; flex: 1 1 280px; min-height: var(--control-height); align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-control); background: var(--surface); color: var(--muted); }
@@ -538,31 +541,31 @@ tr:hover td { background: var(--surface-tint); }
 /*
  * Dark theme: the same tokens, redefined. It follows the OS unless the visitor picked a theme with
  * the toggle (html[data-theme], set before first paint by the inline script in layout.tsx).
- * Brand fills (--blue, --green, …) keep their light values: white text sits on them in both themes.
+ * Brand fills (--blue-dark, --navy) turn champagne at night; --primary-ink flips to dark ink on them.
  */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #0d1118;
-  --surface: #141a24;
-  --surface-soft: #1a212d;
-  --surface-blue: #19243a;
-  --surface-hover: #18202b;
-  --surface-muted: #1c2432;
-  --surface-tint: #16202f;
-  --ink: #e9edf4;
-  --body: #c4cbd7;
-  --muted: #929bac;
-  --muted-blue: #94a5ca;
-  --neutral-ink: #a9b2c2;
-  --placeholder: #7d8799;
-  --disabled-ink: #606a7c;
-  --border: #253043;
-  --border-strong: #324057;
-  --border-hover: #46587a;
-  --line-soft: #1f2836;
-  --accent-ink: #9fbbf2;
-  --focus: #6f95dc;
-  --focus-soft: #24365c;
+  --canvas: #120e0b;
+  --surface: #1b1511;
+  --surface-soft: #221a14;
+  --surface-blue: #261d17;
+  --surface-hover: #1f1813;
+  --surface-muted: #221a14;
+  --surface-tint: #1e1712;
+  --ink: #f5efe6;
+  --body: #d9cdbf;
+  --muted: #b9ada0;
+  --muted-blue: #b9ada0;
+  --neutral-ink: #c9bcae;
+  --placeholder: #93867a;
+  --disabled-ink: #6b5f55;
+  --border: #3a2e25;
+  --border-strong: #4a3b2f;
+  --border-hover: #6b5640;
+  --line-soft: #2a211a;
+  --accent-ink: #d4b483;
+  --focus: #d4b483;
+  --focus-soft: #3a2e1f;
   --success-ink: #6fd3a0;
   --success-surface: #11261c;
   --success-border: #1f4632;
@@ -572,7 +575,86 @@ tr:hover td { background: var(--surface-tint); }
   --danger-ink: #f19a92;
   --danger-surface: #2c1716;
   --danger-border: #4d2623;
-  --neutral-surface: #1b2230;
-  --neutral-border: #2b3547;
+  --neutral-surface: #221a14;
+  --neutral-border: #3a2e25;
   --shadow: 0 8px 30px rgb(0 0 0 / 35%);
+  --blue: #d4b483;
+  --blue-dark: #d4b483;
+  --blue-deep: #e2cea9;
+  --navy: #d4b483;
+  --primary-ink: #120e0b;
+}
+
+/*
+ * Atelier finish: the landing page's type pair and labels. Bodoni Moda (display) for the page title,
+ * brand and sign-in headline only; Jost for everything else; numbers stay tabular sans because Didone
+ * numerals read as letters at metric sizes. Uppercase labels carry the landing's 0.3em tracking.
+ */
+.page-heading h1, .signin-intro h1, .brand-name { font-family: var(--font-display); font-weight: 500; letter-spacing: -.01em; }
+.page-heading h1 { font-size: clamp(28px, 2.2vw + 18px, 40px); line-height: 1.08; }
+.nav-label, .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .3em; }
+.button, .table-action, .filter-chip { transition: background-color 180ms cubic-bezier(.4,0,.2,1), border-color 180ms cubic-bezier(.4,0,.2,1), color 180ms cubic-bezier(.4,0,.2,1), transform 120ms cubic-bezier(.4,0,.2,1); }
+.button:active:not(:disabled), .table-action:active:not(:disabled) { transform: scale(.97); }
+::selection { color: var(--ink); background: color-mix(in srgb, #d4b483 45%, transparent); }
+html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent-ink) 55%, transparent) transparent; }
+.brand-name { display: block; font-size: 24px; line-height: 1; }
+
+/* Shared Drezivo 404 (same layout as the workspace, landing and storefront 404s). */
+.not-found { position: relative; display: flex; min-height: 100dvh; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; padding: 64px 24px; background: var(--canvas); color: var(--ink); text-align: center; }
+.not-found-numeral { position: absolute; inset-inline: 0; top: 50%; transform: translateY(-50%); color: color-mix(in srgb, var(--accent-ink) 7%, transparent); font: italic 400 clamp(160px, 34vw, 416px)/1 var(--font-display); pointer-events: none; user-select: none; }
+.not-found-body { position: relative; display: flex; max-width: 32rem; flex-direction: column; align-items: center; }
+.not-found-brand { display: flex; align-items: center; gap: 8px; }
+.not-found-brand img { width: 36px; height: auto; }
+.not-found-eyebrow { margin: 48px 0 0; color: var(--muted); }
+.not-found h1 { margin: 12px 0 0; font: 500 clamp(36px, 1.6rem + 3vw, 60px)/1.05 var(--font-display); letter-spacing: -.02em; }
+.not-found-rule { display: block; width: 64px; height: 1px; margin-top: 24px; background: color-mix(in srgb, var(--accent-ink) 60%, transparent); }
+.not-found-copy { margin: 24px 0 0; color: var(--muted); font-size: 16px; line-height: 1.75; }
+.not-found-actions { display: flex; width: 100%; flex-direction: column; gap: 12px; margin-top: 40px; }
+.pill-button { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 28px; border: 1px solid transparent; border-radius: 999px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 180ms cubic-bezier(.4,0,.2,1), border-color 180ms cubic-bezier(.4,0,.2,1), color 180ms cubic-bezier(.4,0,.2,1); }
+.pill-primary { color: var(--primary-ink); background: var(--blue-dark); }
+.pill-primary:hover { background: var(--blue-deep); }
+.pill-ghost { border-color: var(--border-strong); color: var(--ink); background: transparent; }
+.pill-ghost:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
+@media (min-width: 640px) { .not-found-actions { width: auto; flex-direction: row; } }
+
+/* Phone tab bar: up to four views plus Menu. The gold indicator slides to the current slot. */
+.tab-bar { display: none; }
+@media (max-width: 767px) {
+  .tab-bar { position: fixed; z-index: 3; inset: auto 0 0; display: block; padding-bottom: env(safe-area-inset-bottom); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(12px); }
+  .tab-bar ul { position: relative; display: grid; grid-template-columns: repeat(var(--tab-count), minmax(0, 1fr)); height: 68px; margin: 0; padding: 0; list-style: none; }
+  .tab-bar ul::before { position: absolute; top: 0; left: calc(100% / var(--tab-count) * var(--tab-active) + (100% / var(--tab-count) - 32px) / 2); width: 32px; height: 2px; border-radius: 999px; background: var(--accent-ink); content: ''; transition: left 300ms cubic-bezier(.22,1,.36,1); }
+  .tab-bar li { display: flex; }
+  .tab-item { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0; border: 0; color: var(--muted); background: transparent; font: 500 11px/1.2 inherit; cursor: pointer; transition: transform 120ms cubic-bezier(.4,0,.2,1); }
+  .tab-item:active { transform: scale(.95); }
+  .tab-item.active { color: var(--ink); }
+  .tab-icon { display: grid; width: 56px; height: 32px; place-items: center; border-radius: 999px; color: var(--muted); transition: background-color 300ms cubic-bezier(.22,1,.36,1), color 300ms cubic-bezier(.22,1,.36,1); }
+  .tab-item.active .tab-icon { color: var(--accent-ink); background: var(--surface-blue); }
+  .tab-item span:last-child { max-width: 100%; overflow: hidden; padding: 0 4px; text-overflow: ellipsis; white-space: nowrap; }
+  .page-content { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .tab-bar ul::before, .tab-icon, .tab-item { transition: none; } }
+
+/*
+ * Page heading banner: the same gold-thread art rendered for each theme (public/art), swapped by CSS
+ * so nothing flashes. A scrim on the text side keeps the heading and description above 4.5:1.
+ */
+.page-heading { position: relative; isolation: isolate; overflow: hidden; padding: 28px 28px 26px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface) url("/art/banner-light.webp") 70% center / cover no-repeat; }
+:root[data-theme="dark"] .page-heading { background-image: url("/art/banner-dark.webp"); }
+.page-heading::before { position: absolute; z-index: -1; inset: 0; background: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 82%, transparent) 45%, transparent 100%); content: ''; }
+.page-heading::after { position: absolute; left: 28px; bottom: 16px; width: 96px; height: 2px; border-radius: 999px; background: linear-gradient(90deg, var(--accent-ink), transparent); content: ''; transform-origin: left; animation: heading-rule 1100ms cubic-bezier(.77,0,.175,1) 200ms both; }
+@keyframes heading-rule { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (max-width: 767px) { .page-heading { padding: 20px 18px 24px; } .page-heading::before { background: linear-gradient(90deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 88%, transparent) 70%, color-mix(in srgb, var(--surface) 40%, transparent) 100%); } .page-heading::after { left: 18px; } }
+
+/* Clerk sign-in card on the console tokens (Clerk reads --clerk-* custom properties). */
+.signin-box {
+  --clerk-color-primary: var(--blue-dark);
+  --clerk-color-primary-foreground: var(--primary-ink);
+  --clerk-color-background: var(--surface);
+  --clerk-color-foreground: var(--ink);
+  --clerk-color-muted-foreground: var(--muted);
+  --clerk-color-input: var(--canvas);
+  --clerk-color-input-foreground: var(--ink);
+  --clerk-color-neutral: var(--ink);
+  --clerk-color-ring: var(--focus);
+  --clerk-font-family: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
 }

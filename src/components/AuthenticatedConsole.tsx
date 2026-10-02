@@ -4,7 +4,7 @@ import { useAuth, RedirectToSignIn, OrganizationList, OrganizationSwitcher } fro
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowClockwise, Buildings, ChartLineUp, CheckCircle, CircleNotch, ClockCounterClockwise, Command, CreditCard, Gear, House, List, MagnifyingGlass, QrCode, ShieldCheck, SignOut, Storefront, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowClockwise, Buildings, ChartLineUp, CheckCircle, CircleNotch, ClockCounterClockwise, Command, CreditCard, Gear, House, List, MagnifyingGlass, QrCode, ShieldCheck, SignOut, SquaresFour, Storefront, WarningCircle, X } from "@phosphor-icons/react";
 import { ApiError, apiRequest, PageData, resourcePaths, resourceRequest, withCursor } from "@/lib/api";
 import { analyticsPath, parseAnalyticsResponse } from "@/lib/analytics";
 import { resources, ResourceId, resourceHelp, visibleResources } from "@/lib/resources";
@@ -345,10 +345,12 @@ export function AuthenticatedConsole() {
   if (!orgId) return <main className="organization-screen"><div className="organization-card"><BrandMark /><p className="eyebrow">Organization context required</p><h1>Select Internal Operator</h1><p>The operator API requires an active Clerk organization on every request. Choose the dedicated Internal Operator organization to continue. The API still checks membership and permissions before granting access.</p><OrganizationList hidePersonal afterSelectOrganizationUrl="/" /></div></main>;
 
   const groups = [...new Set(enabledViews.map((item) => item.group))];
+  const tabViews = enabledViews.slice(0, 4);
+  const tabIndex = sidebarOpen ? -1 : tabViews.findIndex((item) => item.id === activeViewId);
   const filteredResources = enabledViews.filter((item) => item.label.toLowerCase().includes(search.trim().toLowerCase()));
   return <div className="app-frame">
     <a className="skip-link" href="#main-content">Skip to content</a>{sidebarOpen && <button className="sidebar-backdrop" aria-label="Close navigation" onClick={closeNavigation} />}
-    <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && sidebarOpen) closeNavigation(); }}><div className="brand"><BrandMark /><span>Drezivo<span className="brand-secondary">Operator</span></span><button ref={mobileCloseRef} className="icon-button mobile-close" aria-label="Close navigation" onClick={closeNavigation}><X size={18} /></button></div>
+    <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && sidebarOpen) closeNavigation(); }}><div className="brand"><BrandMark /><span><span className="brand-name">Drezivo</span><span className="brand-secondary">Operator</span></span><button ref={mobileCloseRef} className="icon-button mobile-close" aria-label="Close navigation" onClick={closeNavigation}><X size={18} /></button></div>
       <div className="workspace-switch"><span className="workspace-label">Workspace</span><div className="organization-control"><OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/" afterLeaveOrganizationUrl="/" appearance={{ elements: { rootBox: { width: "100%" }, organizationSwitcherTrigger: { width: "100%", justifyContent: "space-between", padding: "8px 10px", borderRadius: "7px" } } }} /></div></div>
       <div className="search-box"><MagnifyingGlass size={15} /><input aria-label="Filter navigation" placeholder="Find a view" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" className="search-clear" aria-label="Clear navigation filter" onClick={() => setSearch("")}>Clear</button>}</div>
       <nav ref={sidebarNavRef} aria-label="Main navigation" onScroll={(event) => { if (pendingSidebarScrollTopRef.current === null) sidebarScrollTopRef.current = event.currentTarget.scrollTop; }}>{filteredResources.length === 0 ? <p className="nav-empty" role="status">No views match “{search.trim()}”.</p> : groups.map((group) => { const groupResources = filteredResources.filter((resource) => resource.group === group); return groupResources.length > 0 && <div className="nav-group" key={group}><span className="nav-label">{group}</span>{groupResources.map((item) => { const index = resources.indexOf(item); const Icon = icons[index]; return <Link key={item.id} className={`nav-item ${activeViewId === item.id ? "active" : ""}`} href={item.path} scroll={false} aria-current={activeViewId === item.id ? "page" : undefined} onClick={() => { rememberSidebarScroll(); setSidebarOpen(false); }}><Icon size={17} weight={activeViewId === item.id ? "fill" : "regular"} /><span>{item.label}</span></Link>; })}</div>; })}</nav>
@@ -373,6 +375,13 @@ export function AuthenticatedConsole() {
         {state.status === "ready" && path && <div className="loaded-request"><RequestId requestId={state.requestId} /></div>}
         <footer className="page-footer"><span>Private operator workspace</span><span>Access checks are enforced by the API.</span></footer>
       </div>
+      {/* Phones: thumb-reach tabs for the first four views; Menu opens the full navigation drawer (the hamburger still does too). */}
+      <nav className="tab-bar" aria-label="Quick navigation">
+        <ul style={{ "--tab-count": Math.min(enabledViews.length, 4) + 1, "--tab-active": tabIndex === -1 ? Math.min(enabledViews.length, 4) : tabIndex } as React.CSSProperties}>
+          {tabViews.map((item, index) => { const Icon = icons[resources.indexOf(item)]; const current = index === tabIndex; return <li key={item.id}><Link href={item.path} scroll={false} className={`tab-item ${current ? "active" : ""}`} aria-current={current ? "page" : undefined} onClick={rememberSidebarScroll}><span className="tab-icon"><Icon size={21} weight={current ? "fill" : "regular"} /></span><span>{item.label}</span></Link></li>; })}
+          <li><button type="button" className={`tab-item ${tabIndex === -1 || sidebarOpen ? "active" : ""}`} aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><span className="tab-icon"><SquaresFour size={21} weight={tabIndex === -1 || sidebarOpen ? "fill" : "regular"} /></span><span>Menu</span></button></li>
+        </ul>
+      </nav>
     </main>
   </div>;
 }
