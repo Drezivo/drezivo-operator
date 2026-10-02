@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CircleNotch, Plus } from "@phosphor-icons/react";
 import { ApiError, apiBlobRequest, apiRequest } from "@/lib/api";
+import { useCachedLoad } from "@/lib/view-cache";
 import { MutationGuard } from "@/lib/mutations";
 import { getTokenWithTimeout } from "@/lib/token";
 import {
@@ -14,7 +15,6 @@ import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
 import { StatusBadge } from "./StatusBadge";
 
 type Token = (signal?: AbortSignal) => Promise<string>;
-type Load = { status: "loading" } | { status: "ready"; data: PlatformPaymentMethodList; requestId: string } | { status: "error"; error: ApiError };
 type Draft = { label: string; account_name: string; account_number: string; instructions: string; sort_order: string; qr: "keep" | "remove" | File; reason: string };
 
 const emptyDraft: Draft = { label: "", account_name: "", account_number: "", instructions: "", sort_order: "0", qr: "keep", reason: "" };
@@ -31,28 +31,12 @@ export function PaymentMethodsPanel({ getToken }: { getToken: () => Promise<stri
     if (!value) throw new ApiError("The operator session could not be verified.", "unauthorized");
     return value;
   }, [getToken]);
-  const [state, setState] = useState<Load>({ status: "loading" });
+  const [state, load] = useCachedLoad<PlatformPaymentMethodList>(platformPaymentPaths.list, token);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<{ message: string; requestId: string } | null>(null);
   const guard = useRef(new MutationGuard());
-
-  const load = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const result = await apiRequest<PlatformPaymentMethodList>(platformPaymentPaths.list, { token: await token(signal), signal });
-      setState({ status: "ready", data: result.data, requestId: result.requestId });
-    } catch (loadError) {
-      if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-      setState({ status: "error", error: asApiError(loadError) });
-    }
-  }, [token]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
 
   /** One write at a time; a retry of the same change reuses its idempotency key. */
   const run = useCallback(async (intent: string, path: string, body: Record<string, unknown>, success: string): Promise<boolean> => {

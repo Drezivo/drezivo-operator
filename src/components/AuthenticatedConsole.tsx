@@ -16,7 +16,9 @@ import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ClientsPanel, type ClientsNavigation } from "./ClientsPanel";
 import { PaymentMethodsPanel } from "./PaymentMethodsPanel";
 import { PaymentsPanel } from "./PaymentReview";
-import { CLIENT_FILTERS } from "@/lib/clients";
+import { CLIENT_FILTERS, clientPaths } from "@/lib/clients";
+import { platformPaymentPaths } from "@/lib/platform-payments";
+import { clearViewCache, prefetchViews } from "@/lib/view-cache";
 import { PaginationControls } from "./PaginationControls";
 import { BrandMark } from "./BrandMark";
 import { StatusBadge } from "./StatusBadge";
@@ -340,6 +342,26 @@ export function AuthenticatedConsole() {
     }
   };
 
+  // Cached view data belongs to one operator in one organization; drop it when either changes.
+  useEffect(() => { clearViewCache(); }, [userId, orgId]);
+
+  // After the first view settles, warm the other enabled lists so switching to them is instant.
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !orgId) return;
+    const warmable: Partial<Record<ResourceId, string>> = {
+      clients: clientPaths.list,
+      payments: clientPaths.payments("pending"),
+      "payment-methods": platformPaymentPaths.list,
+    };
+    const paths = enabledViews.map((view) => warmable[view.id]).filter((path): path is string => Boolean(path));
+    const timer = window.setTimeout(() => prefetchViews(paths, async () => {
+      const token = await getTokenWithTimeout(getToken);
+      if (!token) throw new ApiError("The operator session could not be verified.", "unauthorized");
+      return token;
+    }), 600);
+    return () => window.clearTimeout(timer);
+  }, [enabledViews, getToken, isLoaded, isSignedIn, orgId]);
+
   if (!isLoaded) return <main className="setup-screen"><LoadingPanel /></main>;
   if (!isSignedIn) return <RedirectToSignIn />;
   if (!orgId) return <main className="organization-screen"><div className="organization-card"><BrandMark /><p className="eyebrow">Organization context required</p><h1>Select Internal Operator</h1><p>The operator API requires an active Clerk organization on every request. Choose the dedicated Internal Operator organization to continue. The API still checks membership and permissions before granting access.</p><OrganizationList hidePersonal afterSelectOrganizationUrl="/" /></div></main>;
@@ -354,7 +376,7 @@ export function AuthenticatedConsole() {
       <div className="workspace-switch"><span className="workspace-label">Workspace</span><div className="organization-control"><OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/" afterLeaveOrganizationUrl="/" appearance={{ elements: { rootBox: { width: "100%" }, organizationSwitcherTrigger: { width: "100%", justifyContent: "space-between", padding: "8px 10px", borderRadius: "7px" } } }} /></div></div>
       <div className="search-box"><MagnifyingGlass size={15} /><input aria-label="Filter navigation" placeholder="Find a view" value={search} onChange={(event) => setSearch(event.target.value)} />{search && <button type="button" className="search-clear" aria-label="Clear navigation filter" onClick={() => setSearch("")}>Clear</button>}</div>
       <nav ref={sidebarNavRef} aria-label="Main navigation" onScroll={(event) => { if (pendingSidebarScrollTopRef.current === null) sidebarScrollTopRef.current = event.currentTarget.scrollTop; }}>{filteredResources.length === 0 ? <p className="nav-empty" role="status">No views match “{search.trim()}”.</p> : groups.map((group) => { const groupResources = filteredResources.filter((resource) => resource.group === group); return groupResources.length > 0 && <div className="nav-group" key={group}><span className="nav-label">{group}</span>{groupResources.map((item) => { const index = resources.indexOf(item); const Icon = icons[index]; return <Link key={item.id} className={`nav-item ${activeViewId === item.id ? "active" : ""}`} href={item.path} scroll={false} aria-current={activeViewId === item.id ? "page" : undefined} onClick={() => { rememberSidebarScroll(); setSidebarOpen(false); }}><Icon size={17} weight={activeViewId === item.id ? "fill" : "regular"} /><span>{item.label}</span></Link>; })}</div>; })}</nav>
-      <div className="sidebar-bottom"><div className="api-status"><span className="status-dot status-neutral" /><span><strong>API connection</strong><small>Checked per request</small></span></div><button className="profile-button" onClick={() => void signOut()}><span className="avatar">{(userId || "OP").slice(0, 2).toUpperCase()}</span><span><strong>Operator session</strong><small>Sign out</small></span><SignOut size={16} /></button></div>
+      <div className="sidebar-bottom"><div className="api-status"><span className="status-dot status-neutral" /><span><strong>API connection</strong><small>Checked per request</small></span></div><button className="profile-button" onClick={() => { clearViewCache(); void signOut(); }}><span className="avatar">{(userId || "OP").slice(0, 2).toUpperCase()}</span><span><strong>Operator session</strong><small>Sign out</small></span><SignOut size={16} /></button></div>
     </aside>
     <main id="main-content" className="main-area"><header className="topbar"><div className="crumb"><button ref={mobileMenuRef} className="icon-button mobile-menu" aria-label="Open navigation" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(true)}><List size={18} /></button><span>Operator console</span><span className="crumb-separator">/</span><strong>{unsupportedView ? "Unsupported view" : active.label}</strong></div><div className="topbar-right"><span className="environment-label">Internal</span><ThemeToggle /><button className="icon-button refresh-button" aria-label={refreshPending ? "Refreshing data" : "Refresh data"} aria-busy={refreshPending} disabled={refreshPending || !path} onClick={() => { void refresh(); }}><ArrowClockwise className={refreshPending ? "spin" : undefined} size={17} /></button></div></header>
         <div className="page-content"><div className="page-heading"><div><p className="eyebrow">{unsupportedView ? "Navigation" : active.group}</p><h1 ref={pageHeadingRef} tabIndex={-1}>{unsupportedView ? "Unsupported view" : active.id === "businesses" && businessId ? "Business details" : active.id === "clients" && clientId ? "Business" : active.label}</h1><p className="page-description">{unsupportedView ? `The requested view “${requestedView}” is not supported. Choose a view from the navigation.` : active.id === "businesses" && businessId ? `Business record for ${businessId} returned by the operator API.` : active.id === "clients" && clientId ? "Account, people and actions for one client business." : resourceHelp[active.id]}</p></div>{active.id === "entitlements" && !unsupportedView && <form className="business-picker" onSubmit={(event) => { event.preventDefault(); setSelectedBusiness(entitlementInput.trim()); }}><label htmlFor="entitlement-business-id">Business ID</label><div><input id="entitlement-business-id" required pattern="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}" title="Enter a valid business UUID" value={entitlementInput} onChange={(event) => setEntitlementInput(event.target.value)} placeholder="Business UUID" /><button className="button button-secondary" type="submit">Load</button></div></form>}</div>

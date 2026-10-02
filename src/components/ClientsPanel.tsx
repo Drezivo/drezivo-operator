@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowClockwise, ArrowLeft, CaretRight, CheckCircle, CircleNotch, MagnifyingGlass, WarningCircle } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "@/lib/api";
+import { useCachedLoad } from "@/lib/view-cache";
 import { MutationGuard } from "@/lib/mutations";
 import { getTokenWithTimeout } from "@/lib/token";
 import {
@@ -14,7 +15,6 @@ import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
 import { PaymentReviewList } from "./PaymentReview";
 import { StatusBadge } from "./StatusBadge";
 
-type Load<T> = { status: "loading" } | { status: "ready"; data: T; requestId: string } | { status: "error"; error: ApiError };
 type Notice = { message: string; requestId: string } | null;
 export type ClientsTab = "businesses" | "people";
 export type ClientsNavigation = { client?: string | null; tab?: ClientsTab; filter?: ClientFilter };
@@ -31,26 +31,6 @@ const FILTERS: Array<{ id: ClientFilter; label: string }> = [
 
 function asApiError(error: unknown): ApiError {
   return error instanceof ApiError ? error : new ApiError("An unexpected error occurred.", "http");
-}
-
-function useLoad<T>(path: string, token: (signal?: AbortSignal) => Promise<string>) {
-  const [state, setState] = useState<Load<T>>({ status: "loading" });
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setState({ status: "loading" });
-    try {
-      const result = await apiRequest<T>(path, { token: await token(signal), signal });
-      setState({ status: "ready", data: result.data, requestId: result.requestId });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      setState({ status: "error", error: asApiError(error) });
-    }
-  }, [path, token]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
-  return [state, load, setState] as const;
 }
 
 /**
@@ -82,7 +62,7 @@ export function ClientsPanel({ getToken, clientId = null, tab = "businesses", fi
 }
 
 function BusinessList({ token, filter, onFilter, onOpen }: { token: (signal?: AbortSignal) => Promise<string>; filter: ClientFilter; onFilter: (filter: ClientFilter) => void; onOpen: (id: string) => void }) {
-  const [list, load] = useLoad<{ items: ClientSummary[] }>(clientPaths.list, token);
+  const [list, load] = useCachedLoad<{ items: ClientSummary[] }>(clientPaths.list, token);
   const [query, setQuery] = useState("");
   const now = useMemo(() => new Date(), [list]);
   if (list.status === "loading") return <LoadingPanel />;
@@ -134,7 +114,7 @@ function BusinessList({ token, filter, onFilter, onOpen }: { token: (signal?: Ab
 }
 
 function PeopleList({ token, onOpenBusiness }: { token: (signal?: AbortSignal) => Promise<string>; onOpenBusiness: (tenantId: string) => void }) {
-  const [people, load] = useLoad<{ items: PersonRow[] }>(clientPaths.people, token);
+  const [people, load] = useCachedLoad<{ items: PersonRow[] }>(clientPaths.people, token);
   const [query, setQuery] = useState("");
   if (people.status === "loading") return <LoadingPanel />;
   if (people.status === "error") return <StatePanel error={people.error} dependency="Business API" onRetry={() => void load()} />;
@@ -174,7 +154,7 @@ function PeopleList({ token, onOpenBusiness }: { token: (signal?: AbortSignal) =
 }
 
 function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onBack: () => void }) {
-  const [detail, load, setDetail] = useLoad<ClientDetail>(clientPaths.detail(tenantId), token);
+  const [detail, load, replaceDetail] = useCachedLoad<ClientDetail>(clientPaths.detail(tenantId), token);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -191,7 +171,7 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
       const result = await guard.current.run(intent, { path, body }, async (idempotencyKey) =>
         apiRequest<ClientCommandResult>(path, { method: "POST", token: await token(), body, idempotencyKey }));
       if (!result) return false;
-      setDetail({ status: "ready", data: result.data.tenant, requestId: result.requestId });
+      replaceDetail(result.data.tenant, result.requestId);
       const suffix = result.data.replayed ? " It was already done, so nothing ran twice." : result.data.changed ? "" : " Nothing needed to change.";
       setNotice({ message: `${success}${suffix}`, requestId: result.requestId });
       setOpenAction(null);
@@ -202,7 +182,7 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
     } finally {
       setPending(null);
     }
-  }, [setDetail, token]);
+  }, [replaceDetail, token]);
 
   if (detail.status === "loading") return <div className="clients"><BackButton onBack={onBack} /><LoadingPanel /></div>;
   if (detail.status === "error") return <div className="clients"><BackButton onBack={onBack} /><StatePanel error={detail.error} dependency="Business API" onRetry={() => void load()} /></div>;
@@ -248,7 +228,7 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
           {client.payments.length === 0 ? <p className="muted">No payments sent yet.</p>
             : <PaymentReviewList payments={client.payments} token={token}
               onReviewed={(result, requestId, decision) => {
-                setDetail({ status: "ready", data: result.tenant, requestId });
+                replaceDetail(result.tenant, requestId);
                 setNotice({ message: decision === "approve" ? "Payment approved. The owner is emailed and has full access again." : "Payment rejected. The owner sees your reason.", requestId });
               }} />}
         </section>

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ArrowSquareOut, CircleNotch } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "@/lib/api";
+import { useCachedLoad } from "@/lib/view-cache";
 import { MutationGuard } from "@/lib/mutations";
 import { clientPaths, formatManila, formatPeso, type ClientCommandResult, type SubscriptionPayment } from "@/lib/clients";
 import { getTokenWithTimeout } from "@/lib/token";
@@ -129,25 +130,8 @@ export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Pr
     return value;
   }, [getToken]);
   const [view, setView] = useState<"pending" | "recent">("pending");
-  const [state, setState] = useState<Load>({ status: "loading" });
+  const [state, load] = useCachedLoad<{ items: SubscriptionPayment[] }>(clientPaths.payments(view), token);
   const [notice, setNotice] = useState<{ message: string; requestId: string } | null>(null);
-
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setState({ status: "loading" });
-    try {
-      const result = await apiRequest<{ items: SubscriptionPayment[] }>(clientPaths.payments(view), { token: await token(signal), signal });
-      setState({ status: "ready", items: result.data.items, requestId: result.requestId });
-    } catch (loadError) {
-      if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-      setState({ status: "error", error: loadError instanceof ApiError ? loadError : new ApiError("An unexpected error occurred.", "http") });
-    }
-  }, [token, view]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
 
   return <div className="clients payments">
     <div className="segmented" role="tablist" aria-label="Show">
@@ -158,8 +142,8 @@ export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Pr
     {notice && <p className="action-success" role="status">{notice.message}<RequestId requestId={notice.requestId} /></p>}
     {state.status === "error" ? <StatePanel error={state.error} dependency="Business API" onRetry={() => void load()} />
       : state.status === "loading" ? <LoadingPanel />
-        : state.items.length === 0 ? <EmptyPanel title={view === "pending" ? "Nothing to review" : "No payments yet"} body={view === "pending" ? "Proofs of payment appear here when an owner sends one." : "Reviewed and waiting payments appear here."} />
-          : <PaymentReviewList payments={state.items} token={token} showBusiness onOpenBusiness={onOpenBusiness}
+        : state.data.items.length === 0 ? <EmptyPanel title={view === "pending" ? "Nothing to review" : "No payments yet"} body={view === "pending" ? "Proofs of payment appear here when an owner sends one." : "Reviewed and waiting payments appear here."} />
+          : <PaymentReviewList payments={state.data.items} token={token} showBusiness onOpenBusiness={onOpenBusiness}
             onReviewed={(result, requestId, decision) => {
               setNotice({ message: `${decision === "approve" ? "Payment approved" : "Payment rejected"} for ${result.tenant.name}. The owner is emailed.`, requestId });
               void load();
@@ -168,4 +152,3 @@ export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Pr
   </div>;
 }
 
-type Load = { status: "loading" } | { status: "ready"; items: SubscriptionPayment[]; requestId: string } | { status: "error"; error: ApiError };
