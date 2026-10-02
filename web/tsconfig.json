@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/dev/types/**/*.ts",
+    ".next-operator-3010/types/**/*.ts",
+    ".next-operator-3010/dev/types/**/*.ts",
+    ".next-operator-preview-3010/types/**/*.ts",
+    ".next-operator-preview-3010/dev/types/**/*.ts",
+    ".next-operator-preview-3011/types/**/*.ts",
+    ".next-operator-preview-3011/dev/types/**/*.ts",
+    ".next-operator-preview-3012/types/**/*.ts",
+    ".next-operator-preview-3012/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
