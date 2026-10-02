@@ -1,0 +1,16 @@
+{
+  "name": "drezivo-operator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Drezivo internal operator system: operator API and operator web console",
+  "workspaces": ["api", "web"],
+  "engines": {"node": ">=22.9.0 <25"},
+  "scripts": {
+    "dev:api": "npm run dev --workspace @drezivo/operator-api",
+    "dev:web": "npm run dev --workspace @drezivo/operator-web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  }
+}

@@ -1,0 +1,13 @@
+# Drezivo operator monorepo
+**/node_modules/
+**/.next/
+**/.next*/
+**/dist/
+**/coverage/
+**/*.tsbuildinfo
+**/*.log
+**/.it-data/
+graphify-out/
+
+# Never commit any env file, including examples (owner rule).
+**/.env*
