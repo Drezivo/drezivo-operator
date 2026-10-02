@@ -31,7 +31,9 @@ type SubscriptionRow = {
 };
 type Applied = { changed: boolean; summary: Record<string, unknown> };
 
-const TENANT_LIST_LIMIT = 200;
+// Caps for the cross-tenant lists (business migration 0069 enforces the same upper bounds).
+const TENANT_LIST_LIMIT = 1000;
+const PEOPLE_LIST_LIMIT = 5000;
 const AUDIT_LIMIT = 20;
 const NOTE_LIMIT = 50;
 const TENANT_PAYMENT_LIMIT = 20;
@@ -64,7 +66,8 @@ export type TenantAdminDbOptions = { connectionString: string; caCertificate?: s
 export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): TenantAdminPort & { close(): Promise<void> } {
   const pool = new pg.Pool({
     connectionString: options.connectionString,
-    max: 3,
+    // Lists are one query each now; a few more connections let detail pages and actions overlap.
+    max: 6,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     ...(options.caCertificate ? { ssl: { ca: options.caCertificate, rejectUnauthorized: true } } : {}),
@@ -89,10 +92,12 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     try {
       await verifyRole(client);
       await client.query('BEGIN');
-      await client.query("SET LOCAL statement_timeout = '5s'");
-      await client.query("SET LOCAL lock_timeout = '3s'");
-      await client.query('SELECT set_config($1, $2, true)', ['app.tenant_id', tenantId]);
-      await client.query('SELECT set_config($1, $2, true)', ['app.principal_id', actorKey]);
+      // One round trip for every transaction-local setting (set_config(..., true) = SET LOCAL).
+      await client.query(
+        `SELECT set_config('statement_timeout', '5s', true), set_config('lock_timeout', '3s', true),
+                set_config('app.tenant_id', $1, true), set_config('app.principal_id', $2, true)`,
+        [tenantId, actorKey],
+      );
       const result = await fn(client);
       await client.query('COMMIT');
       return result;
@@ -238,15 +243,26 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     });
   }
 
-  async function allTenants(): Promise<TenantRow[]> {
+  /**
+   * Cross-tenant operator lists. Each is ONE call to a read-only SECURITY DEFINER function from
+   * business migration 0069, which answers only inside this explicit operator context (no tenant
+   * set), so a list costs a handful of round trips instead of a transaction per business.
+   */
+  async function operatorRead<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
       await verifyRole(client);
-      // `tenant` is a global table (no tenant RLS); tenant-owned rows are read per tenant under RLS.
-      const result = await client.query<TenantRow>(
-        `SELECT id, name, slug, status, timezone, created_at FROM tenant ORDER BY created_at DESC LIMIT ${TENANT_LIST_LIMIT}`,
+      await client.query('BEGIN READ ONLY');
+      await client.query(
+        `SELECT set_config('statement_timeout', '5s', true), set_config('app.actor_kind', 'operator', true),
+                set_config('app.principal_id', 'operator:list', true), set_config('app.tenant_id', '', true)`,
       );
-      return result.rows;
+      const result = await fn(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
     } finally {
       client.release();
     }
@@ -254,28 +270,40 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
 
   return {
     async listPeople() {
-      const people: PersonRow[] = [];
-      for (const tenant of await allTenants()) {
-        const rows = await transaction(tenant.id, 'operator:list', async (client) => (await client.query<{
-          id: string; clerk_user_id: string; role: PersonRow['role']; status: PersonRow['status']; created_at: Date;
-        }>('SELECT id, clerk_user_id, role, status, created_at FROM membership WHERE tenant_id = $1 ORDER BY role, created_at', [tenant.id])).rows);
-        for (const row of rows) {
-          people.push({
-            tenant_id: tenant.id, tenant_name: tenant.name, tenant_status: tenant.status, membership_id: row.id,
-            clerk_user_id: row.clerk_user_id, role: row.role, status: row.status, created_at: row.created_at.toISOString(),
-          });
-        }
-      }
-      return people;
+      const rows = await operatorRead(async (client) => (await client.query<{
+        tenant_id: string; tenant_name: string; tenant_status: PersonRow['tenant_status']; membership_id: string;
+        clerk_user_id: string; role: PersonRow['role']; status: PersonRow['status']; created_at: Date;
+      }>('SELECT * FROM operator_people($1)', [PEOPLE_LIST_LIMIT])).rows);
+      return rows.map((row): PersonRow => ({
+        tenant_id: row.tenant_id, tenant_name: row.tenant_name, tenant_status: row.tenant_status, membership_id: row.membership_id,
+        clerk_user_id: row.clerk_user_id, role: row.role, status: row.status, created_at: row.created_at.toISOString(),
+      }));
     },
 
     async listTenants() {
-      const tenants = await allTenants();
-      const summaries: TenantSummary[] = [];
-      for (const tenant of tenants) {
-        summaries.push(await transaction(tenant.id, 'operator:list', (client) => summaryOf(client, tenant)));
-      }
-      return summaries;
+      const rows = await operatorRead(async (client) => (await client.query<{
+        tenant_id: string; name: string; slug: string; status: TenantSummary['status']; timezone: string; created_at: Date;
+        subscription_status: NonNullable<TenantSummary['subscription']>['status'] | null; plan_code: string | null;
+        trial_ends_at: Date | null; grace_ends_at: Date | null; current_period_end: Date | null;
+        members_active: number; members_suspended: number; members_removed: number; pending_payment: boolean;
+      }>('SELECT * FROM operator_tenant_summaries($1)', [TENANT_LIST_LIMIT])).rows);
+      return rows.map((row): TenantSummary => ({
+        tenant_id: row.tenant_id,
+        name: row.name,
+        slug: row.slug,
+        status: row.status,
+        timezone: row.timezone,
+        created_at: row.created_at.toISOString(),
+        subscription: row.subscription_status && row.plan_code && row.current_period_end ? {
+          status: row.subscription_status,
+          plan_code: row.plan_code,
+          trial_ends_at: iso(row.trial_ends_at),
+          grace_ends_at: iso(row.grace_ends_at),
+          current_period_end: row.current_period_end.toISOString(),
+        } : null,
+        member_counts: { active: row.members_active, suspended: row.members_suspended, removed: row.members_removed },
+        pending_payment: row.pending_payment,
+      }));
     },
 
     async getTenant(tenantId) {
@@ -287,13 +315,30 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
 
     async updateProfile(tenantId, change, ctx) {
       return command(tenantId, 'tenant.profile.update', { kind: 'tenant', id: tenantId }, ctx, async (client) => {
-        const result = await client.query(
-          `UPDATE tenant
-              SET name = COALESCE($2, name), timezone = COALESCE($3, timezone), updated_at = now()
-            WHERE id = $1
-              AND (name IS DISTINCT FROM COALESCE($2, name) OR timezone IS DISTINCT FROM COALESCE($3, timezone))`,
-          [tenantId, change.name ?? null, change.timezone ?? null],
-        );
+        // Touch only the requested columns: business migration 0064 grants drezivo_app UPDATE on
+        // tenant (name, status, updated_at), so writing timezone back unchanged was itself refused.
+        const params: unknown[] = [tenantId];
+        const sets: string[] = [];
+        const differs: string[] = [];
+        for (const column of ['name', 'timezone'] as const) {
+          const value = change[column];
+          if (value === undefined) continue;
+          params.push(value);
+          sets.push(`${column} = $${params.length}`);
+          differs.push(`${column} IS DISTINCT FROM $${params.length}`);
+        }
+        let result: pg.QueryResult;
+        try {
+          result = await client.query(
+            `UPDATE tenant SET ${sets.join(', ')}, updated_at = now() WHERE id = $1 AND (${differs.join(' OR ')})`,
+            params,
+          );
+        } catch (error) {
+          if ((error as { code?: string }).code === '42501' && change.timezone !== undefined) {
+            throw conflict('Changing the time zone is not available yet. Renaming the business still works.');
+          }
+          throw error;
+        }
         return { changed: result.rowCount === 1, summary: { fields: Object.keys(change) } };
       });
     },
@@ -408,19 +453,12 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     },
 
     async listPayments(filter) {
-      const rows: SubscriptionPaymentRow[] = [];
-      for (const tenant of await allTenants()) {
-        const found = await transaction(tenant.id, 'operator:list', async (client) => (await client.query<PaymentDbRow>(
-          `SELECT ${PAYMENT_COLUMNS} ${PAYMENT_FROM}
-            WHERE sp.tenant_id = $1 ${filter === 'pending' ? "AND sp.status = 'pending'" : ''}
-            ORDER BY sp.created_at DESC, sp.id DESC LIMIT ${TENANT_PAYMENT_LIMIT}`,
-          [tenant.id],
-        )).rows);
-        rows.push(...found.map((row) => paymentOf(row, tenant.name)));
-      }
-      // Oldest pending first so nobody waits longest; recent history newest first.
-      rows.sort((a, b) => (filter === 'pending' ? a.submitted_at.localeCompare(b.submitted_at) : b.submitted_at.localeCompare(a.submitted_at)));
-      return rows.slice(0, PAYMENT_QUEUE_LIMIT);
+      // Oldest pending first so nobody waits longest; recent history newest first (ordered in SQL).
+      const rows = await operatorRead(async (client) => (await client.query<PaymentDbRow & { payment_id: string; tenant_name: string }>(
+        'SELECT * FROM operator_subscription_payment_queue($1, $2)',
+        [filter, PAYMENT_QUEUE_LIMIT],
+      )).rows);
+      return rows.map((row) => paymentOf({ ...row, id: row.payment_id }, row.tenant_name));
     },
 
     async reviewPayment(tenantId, paymentId, decision, ctx) {

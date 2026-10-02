@@ -26,4 +26,35 @@ describe('business user directory', () => {
     const directory = createBusinessUserDirectory({ listUsers: async () => { throw new Error('Clerk down'); } });
     await expect(directory.lookup(['user_a'])).resolves.toEqual(new Map());
   });
+
+  it('reuses profiles for a minute and only fetches the ones it does not have', async () => {
+    let now = 0;
+    const calls: string[][] = [];
+    const directory = createBusinessUserDirectory({ now: () => now, listUsers: async ({ userId }) => { calls.push(userId); return { data: userId.map((id) => user(id)) }; } });
+    await directory.lookup(['user_a', 'user_b']);
+    expect((await directory.lookup(['user_a', 'user_b', 'user_c'])).size).toBe(3);
+    expect(calls).toEqual([['user_a', 'user_b'], ['user_c']]);
+    now = 60_001;
+    await directory.lookup(['user_a']);
+    expect(calls.at(-1)).toEqual(['user_a']);
+  });
+
+  it('fetches batches in parallel, and one failed batch leaves only its people unresolved', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const ids = Array.from({ length: 450 }, (_, index) => `user_${index}`);
+    const directory = createBusinessUserDirectory({
+      listUsers: async ({ userId }) => {
+        inFlight += 1; peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        if (userId[0] === 'user_100') throw new Error('one batch failed');
+        return { data: userId.map((id) => user(id)) };
+      },
+    });
+    const profiles = await directory.lookup(ids);
+    expect(peak).toBe(4);
+    expect(profiles.size).toBe(350);
+    expect(profiles.has('user_150')).toBe(false);
+  });
 });

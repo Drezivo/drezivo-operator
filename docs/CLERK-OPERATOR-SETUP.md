@@ -51,6 +51,8 @@ Clerk assigns the creator of a new organization its configured Creator Role, oft
 
 Clerk roles establish the operator's recognized membership role; custom Clerk permissions do not grant Drezivo API permissions. The API enforces its own role-to-permission mapping on every protected request. Unknown roles, users outside **Internal Operator**, and users without an active membership are denied.
 
+The API confirms membership with Clerk's Backend API and reuses a confirmed **active** membership for 30 seconds (`MEMBERSHIP_CACHE_MS` in `src/operator-authorization.ts`), so a page does not wait on Clerk for every request. A removed or demoted operator therefore loses access within 30 seconds. Denials and Clerk errors are never cached: they are looked up again on every request and still fail closed.
+
 ## Configure local environments
 
 Copy the root `.env.example` to `.env` and fill in the blank Clerk values using the Development keys from the selected Drezivo-internal instance:

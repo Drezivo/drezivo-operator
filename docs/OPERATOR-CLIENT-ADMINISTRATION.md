@@ -84,7 +84,17 @@ Operator session tokens are accepted only when minted for an origin in `OPERATOR
 
 The business database stores Clerk user IDs, not names or emails. With `BUSINESS_CLERK_SECRET_KEY`
 set, every member carries `profile: { email, name, last_sign_in_at, banned, locked }` read from the
-business Clerk instance in batches of 100. This is display data only; nothing is authorized from it.
+business Clerk instance in batches of 100 (up to four batches at a time). Profiles are reused for
+60 seconds. This is display data only; nothing is authorized from it.
+
+## Cross-tenant lists (business migration 0069)
+
+`/tenants`, `/people` and `/subscription-payments` each run ONE query: the read-only
+`SECURITY DEFINER` functions `operator_tenant_summaries`, `operator_people` and
+`operator_subscription_payment_queue` from business migration 0069, called in a read-only
+transaction with `app.actor_kind = 'operator'` and no tenant set (the functions return nothing
+otherwise). Lists are capped at 1,000 businesses, 5,000 memberships and 200 payments. Detail pages
+and every command still run per tenant under RLS. Deploy the business migration before this API.
 
 ## Tests
 

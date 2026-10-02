@@ -2,7 +2,7 @@ import { createClerkClient } from '@clerk/express';
 import type { Request, RequestHandler } from 'express';
 import { z } from 'zod';
 import { AppError } from './errors.js';
-import { createClerkOperatorMembershipReader, type ClerkMembershipList, type ClerkOperatorRole } from './clerk-operator-membership.js';
+import { createClerkOperatorMembershipReader, type ClerkMembershipList, type ClerkOperatorMembershipResult, type ClerkOperatorRole } from './clerk-operator-membership.js';
 import type { SafeOperatorPrincipal } from './operator-auth.js';
 import { requireOperatorPermission, type OperatorPermission } from './operator-permission.js';
 import { config, isClerkConfigured } from './config.js';
@@ -45,12 +45,53 @@ const clerkRoleToOperatorRole = {
   'org:read_only_operator': 'read_only_operator',
 } as const satisfies Record<ClerkOperatorRole, OperatorRole>;
 
+/**
+ * Every operator request used to wait on a Clerk Backend API round trip to confirm membership.
+ * A confirmed active membership is now reused for MEMBERSHIP_CACHE_MS, so a removed or demoted
+ * operator loses access within that window (comparable to a Clerk session token's own lifetime).
+ * Only active results are cached: a denial or a provider error is looked up again every time, so
+ * the check still fails closed. Concurrent lookups for one user share a single Clerk call.
+ */
+export const MEMBERSHIP_CACHE_MS = 30_000;
+const MEMBERSHIP_CACHE_MAX_ENTRIES = 1_000;
+
+type MembershipReader = (clerkUserId: string) => Promise<ClerkOperatorMembershipResult>;
+
+export function cachedActiveMemberships(read: MembershipReader, ttlMs: number, now: () => number): MembershipReader {
+  const cache = new Map<string, { expiresAt: number; result: ClerkOperatorMembershipResult }>();
+  const inFlight = new Map<string, Promise<ClerkOperatorMembershipResult>>();
+  return async (clerkUserId) => {
+    const hit = cache.get(clerkUserId);
+    if (hit && hit.expiresAt > now()) return hit.result;
+    if (hit) cache.delete(clerkUserId);
+    const pending = inFlight.get(clerkUserId);
+    if (pending) return pending;
+    const lookup = read(clerkUserId).then((result) => {
+      if (result.active === true && ttlMs > 0) {
+        // Bounded: drop the oldest entry (Map keeps insertion order) before adding a new one.
+        if (cache.size >= MEMBERSHIP_CACHE_MAX_ENTRIES) cache.delete(cache.keys().next().value as string);
+        cache.set(clerkUserId, { expiresAt: now() + ttlMs, result });
+      }
+      return result;
+    }).finally(() => inFlight.delete(clerkUserId));
+    inFlight.set(clerkUserId, lookup);
+    return lookup;
+  };
+}
+
 /** Builds role and permission decisions from the dedicated Clerk operator organization. */
 export function createClerkAuthorizationPort(input: {
   organizationId: string;
   listMemberships: ClerkMembershipList;
+  /** How long a confirmed ACTIVE membership is reused; denials and provider errors are never cached. */
+  membershipCacheMs?: number;
+  now?: () => number;
 }): AuthorizationPort {
-  const readMembership = createClerkOperatorMembershipReader({ ...input, timeoutMs: 2_000 });
+  const readMembership = cachedActiveMemberships(
+    createClerkOperatorMembershipReader({ ...input, timeoutMs: 2_000 }),
+    input.membershipCacheMs ?? MEMBERSHIP_CACHE_MS,
+    input.now ?? Date.now,
+  );
   return {
     version: authorizationContractVersion,
     resolveMembership: async ({ clerkUserId, operatorOrganizationId }) => {

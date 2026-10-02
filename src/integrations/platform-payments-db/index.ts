@@ -57,8 +57,12 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query("SET LOCAL statement_timeout = '5s'");
-      await client.query("SET LOCAL lock_timeout = '3s'");
+      // Business migration 0064 lets drezivo_app write Drezivo's payment methods only in an
+      // explicit operator context; without it every create and update is refused by RLS.
+      await client.query(
+        `SELECT set_config('statement_timeout', '5s', true), set_config('lock_timeout', '3s', true),
+                set_config('app.actor_kind', 'operator', true), set_config('app.tenant_id', '', true)`,
+      );
       const result = await fn(client);
       await client.query('COMMIT');
       return result;

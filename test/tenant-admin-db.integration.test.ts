@@ -42,9 +42,12 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
     admin = new pg.Client({ host: 'localhost', port: PORT, user: 'postgres', password: 'it-super', database: 'drezivo' });
     await admin.connect();
     await admin.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+    // Same ledger as the business migrate script; business migration 0065 locks it down.
+    await admin.query('CREATE TABLE IF NOT EXISTS schema_migrations (filename text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
     for (const file of readdirSync(migrationsDir!).filter((name) => /^\d{4}_.*\.sql$/.test(name)).sort()) {
       await admin.query('BEGIN');
       await admin.query(readFileSync(join(migrationsDir!, file), 'utf8'));
+      await admin.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
       await admin.query('COMMIT');
     }
     await admin.query("ALTER ROLE drezivo_app WITH LOGIN PASSWORD 'it-app'");
