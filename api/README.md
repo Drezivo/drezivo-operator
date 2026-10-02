@@ -18,10 +18,11 @@ The business system's database is Supabase PostgreSQL (business ADR 0009). This 
 
 ## Local setup
 
-Use Node.js 22 or newer within the supported LTS range, then run:
+Use Node.js 22 or newer within the supported LTS range. Dependencies install once from the
+repository root; then run the checks from this folder:
 
 ```bash
-npm ci
+npm ci            # at the repository root
 npm run typecheck
 npm run lint
 npm test

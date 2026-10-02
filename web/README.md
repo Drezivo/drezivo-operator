@@ -6,7 +6,7 @@ An internal operations interface for reviewing Drezivo platform records. It uses
 
 Requirements: Node.js 20.9 or newer and npm.
 
-1. Install dependencies with `npm install`.
+1. Install dependencies once from the repository root with `npm ci`.
 2. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` from the Drezivo-internal Clerk application used by this console. Never put the Clerk secret key in this web repository or in a `NEXT_PUBLIC_` variable, and never commit `.env.local`.
 3. Keep `NEXT_PUBLIC_DREZIVO_API_BASE_URL` set to the operator API origin plus `/api/v1`. Production requires HTTPS; development may use plain HTTP only with a loopback host (`localhost`, `127.0.0.0/8`, or `::1`). The template points to the API's local default, `http://localhost:5080/api/v1`.
 4. Run `npm run dev` and open `http://localhost:3010`. The console reserves port 3010 so it does not take over another local app on ports 3000 or 3001.

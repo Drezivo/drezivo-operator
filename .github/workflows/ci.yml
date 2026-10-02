@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secrets:
+    name: secret-file hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject tracked environment files
+        shell: bash
+        run: |
+          if git ls-files | grep -E '(^|/)\.env($|\.)'; then
+            echo "::error::A .env file is tracked. Remove it and rotate every value in it."
+            exit 1
+          fi
+
+  api:
+    name: operator API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace @drezivo/operator-api
+      - run: npm run lint --workspace @drezivo/operator-api
+      - run: npm test --workspace @drezivo/operator-api
+      - run: npm run build --workspace @drezivo/operator-api
+      - run: git diff --check
+
+  web:
+    name: operator web console
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace @drezivo/operator-web
+      - run: npm test --workspace @drezivo/operator-web
+      - run: npm run build --workspace @drezivo/operator-web
+        env:
+          NEXT_PUBLIC_DREZIVO_API_BASE_URL: https://operator-api.example.invalid/api/v1

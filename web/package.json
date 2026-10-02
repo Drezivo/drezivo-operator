@@ -1,5 +1,5 @@
 {
-  "name": "drezivo-operator-web",
+  "name": "@drezivo/operator-web",
   "version": "1.0.0",
   "description": "Internal Drezivo operator console",
   "private": true,
