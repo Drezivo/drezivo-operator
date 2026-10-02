@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+*.log
+# Never commit any env file, including examples (owner rule).
+.env*
+.it-data/
