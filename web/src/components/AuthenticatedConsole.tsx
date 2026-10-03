@@ -16,7 +16,7 @@ import { AnalyticsPanel } from "./AnalyticsPanel";
 import { ClientsPanel, type ClientsNavigation } from "./ClientsPanel";
 import { PaymentMethodsPanel } from "./PaymentMethodsPanel";
 import { PaymentsPanel } from "./PaymentReview";
-import { CLIENT_FILTERS, clientPaths } from "@/lib/clients";
+import { CLIENT_FILTERS, DEFAULT_CLIENT_FILTER, clientPaths } from "@/lib/clients";
 import { platformPaymentPaths } from "@/lib/platform-payments";
 import { clearViewCache, prefetchViews } from "@/lib/view-cache";
 import { PaginationControls } from "./PaginationControls";
@@ -97,7 +97,7 @@ export function AuthenticatedConsole() {
   const clientId = searchParams.get("client");
   const clientsTab = searchParams.get("tab") === "people" ? "people" : "businesses";
   const clientsFilterParam = searchParams.get("filter");
-  const clientsFilter = CLIENT_FILTERS.find((value) => value === clientsFilterParam) ?? "attention";
+  const clientsFilter = CLIENT_FILTERS.find((value) => value === clientsFilterParam) ?? DEFAULT_CLIENT_FILTER;
   const navigateClients = useCallback((next: ClientsNavigation) => {
     const params = new URLSearchParams(window.location.search);
     params.set("view", "clients");

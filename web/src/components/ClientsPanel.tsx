@@ -8,7 +8,7 @@ import { MutationGuard } from "@/lib/mutations";
 import { getTokenWithTimeout } from "@/lib/token";
 import {
   clientAttention, clientPaths, clientState, clientStateLabel, clientStateTone, endOfManilaDay, formatManila, manilaDateInput,
-  matchesFilter, personLabel,
+  DEFAULT_CLIENT_FILTER, matchesFilter, personLabel,
   type ClientCommandResult, type ClientDetail, type ClientFilter, type ClientMember, type ClientSummary, type PersonRow,
 } from "@/lib/clients";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
@@ -37,7 +37,7 @@ function asApiError(error: unknown): ApiError {
  * Client administration: every business and person, and the actions an operator takes on them.
  * Navigation state (open business, tab, filter) lives in the URL so links and Back work.
  */
-export function ClientsPanel({ getToken, clientId = null, tab = "businesses", filter = "attention", onNavigate }: {
+export function ClientsPanel({ getToken, clientId = null, tab = "businesses", filter = DEFAULT_CLIENT_FILTER, onNavigate }: {
   getToken: () => Promise<string | null>;
   clientId?: string | null;
   tab?: ClientsTab;

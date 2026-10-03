@@ -149,6 +149,8 @@ export const clientStateTone: Record<ClientState, string> = {
 
 export type ClientFilter = "attention" | "pending" | "trial" | "unpaid" | "locked" | "paid" | "all";
 export const CLIENT_FILTERS: readonly ClientFilter[] = ["attention", "pending", "trial", "unpaid", "locked", "paid", "all"];
+/** The Clients page opens on every business; the other chips narrow it down. */
+export const DEFAULT_CLIENT_FILTER: ClientFilter = "all";
 export const TRIAL_ENDING_DAYS = 3;
 
 /** A business needs attention when an operator is likely to act on it today. */
