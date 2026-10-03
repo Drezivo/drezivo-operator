@@ -28,13 +28,29 @@ describe('Clerk operator membership', () => {
       { data: [row({ organizationId: 'org_business' })] },
       { data: [row({ publicUserData: { userId: 'user_other' } })] },
       { data: [row({ publicUserData: undefined })] },
-      { data: [row({ role: 'org:admin' })] },
+      { data: [row({ role: 'org:billing' })] },
+      { data: [row({ role: 'admin' })] },
       { data: [row(), row()] },
       { unexpected: [] },
     ]) {
       const reader = createClerkOperatorMembershipReader({ organizationId, listMemberships: async () => response });
       await expect(reader(userId)).resolves.toMatchObject({ active: false });
     }
+  });
+
+  it('maps Clerk built-in roles: admin is the platform owner, member is read-only', async () => {
+    const request = {} as Request;
+    for (const [clerkRole, operatorRole] of [['org:admin', 'platform_owner'], ['org:member', 'read_only_operator']] as const) {
+      const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [{ ...membership, role: clerkRole }] }) });
+      await expect(port.resolveMembership({ clerkUserId: userId, operatorOrganizationId: organizationId })).resolves.toEqual({ active: true, roles: [operatorRole] });
+    }
+    const member: SafeOperatorPrincipal = { clerkUserId: userId, operatorOrganizationId: organizationId, roles: ['read_only_operator'], requestId: 'req' };
+    const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [{ ...membership, role: 'org:member' }] }) });
+    await expect(port.resolvePermission({ principal: member, permission: 'operator.overview.read', request })).resolves.toBe(true);
+    for (const permission of ['tenant.admin.manage', 'support.grant.create', 'business.summary.read', 'subscription.read']) {
+      await expect(port.resolvePermission({ principal: member, permission, request })).resolves.toBe(false);
+    }
+    await expect(port.resolveTenantScope({ principal: member, tenantId: '550e8400-e29b-41d4-a716-446655440000', request })).resolves.toBe(false);
   });
 
   it('maps Clerk outages and timeouts to a safe provider failure', async () => {

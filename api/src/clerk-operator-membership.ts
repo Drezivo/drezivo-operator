@@ -1,4 +1,10 @@
+/**
+ * Custom role keys need Clerk's paid B2B add-on in a Production instance, so Clerk's built-in
+ * `org:admin` and `org:member` are accepted too (see operator-authorization.ts for what they map to).
+ */
 export const CLERK_OPERATOR_ROLES = [
+  'org:admin',
+  'org:member',
   'org:platform_owner',
   'org:platform_operator',
   'org:support_operator',

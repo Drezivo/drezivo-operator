@@ -38,6 +38,10 @@ export const denyAuthorizationPort: AuthorizationPort = {
 };
 
 const clerkRoleToOperatorRole = {
+  // Built-in Clerk roles, for a Production instance without custom roles: the organization admin
+  // runs the platform, an ordinary member can only see the overview.
+  'org:admin': 'platform_owner',
+  'org:member': 'read_only_operator',
   'org:platform_owner': 'platform_owner',
   'org:platform_operator': 'platform_operator',
   'org:support_operator': 'support_operator',

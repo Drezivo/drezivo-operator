@@ -20,7 +20,9 @@ staff suspension, trial end, mark paid, edit). Tick each item only after checkin
 ## 2. Operator sign-in (Clerk, internal operator instance)
 
 - [ ] Follow `docs/CLERK-OPERATOR-SETUP.md`: Internal Operator organization, the five `org:*` roles, invite-only.
-- [ ] Assign `org:platform_owner` to the founders and `org:platform_operator` to whoever runs client
+- [ ] Without Clerk's B2B add-on (no custom roles in Production): `org:admin` = platform owner,
+      `org:member` = read-only. Give `org:admin` only to the founders.
+- [ ] With custom roles: assign `org:platform_owner` to the founders and `org:platform_operator` to whoever runs client
       onboarding. `org:support_operator` can view Clients but not change anything.
 - [ ] `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `OPERATOR_CLERK_ORGANIZATION_ID` set on the API host.
 
