@@ -36,7 +36,7 @@ function parseQuery(req: Request, kind: 'jobs' | 'notifications'): { filters: Op
   const parsed = schema.safeParse(q); if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
   const { limit, cursor, ...filters } = parsed.data; const f = filters as OperationsFilters; const range = kind === 'jobs' ? [f.available_from, f.available_to] : [f.accepted_from, f.accepted_to]; if (range.some((x) => x && new Date(x).getTime() > Date.now()) || (range[0] && range[1] && new Date(range[1]).getTime() <= new Date(range[0]).getTime())) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.'); return { filters: f, limit, cursor };
 }
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operations read service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operations read service is unavailable.', { cause: error })); }
 function futureJobs(items: Job[], cursor: { availableAt: string; id: string } | null): boolean {
   return items.some((item) => new Date(item.available_at).getTime() > Date.now())
     || Boolean(cursor && new Date(cursor.availableAt).getTime() > Date.now());

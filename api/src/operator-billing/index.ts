@@ -66,7 +66,7 @@ function query(req: Request): { filters: SubscriptionFilters; limit: number; cur
   if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
   return { filters: { plan_code: parsed.data.plan_code, status: parsed.data.status }, limit: parsed.data.limit, cursor: typeof parsed.data.cursor === 'string' ? parsed.data.cursor : undefined };
 }
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.', { cause: error })); }
 export function createOperatorBillingRouter(readPort: BillingReadPort = unavailableBillingReadPort, authorize: RequestHandler = (_req, _res, next) => next(), options: BillingRouterOptions = {}): Router {
   const router = express.Router();
   const permission = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));
