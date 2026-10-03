@@ -44,10 +44,14 @@ Create these Clerk organization roles with the exact role identifiers the API re
 | `org:support_operator`   | Operator overview; Clients: view only                                                  |
 | `org:billing_operator`   | Operator overview and subscription reads                                               |
 | `org:platform_owner`     | All permissions currently implemented by the API, including operator-wide tenant scope |
+| `org:admin` (built-in)   | Same as `org:platform_owner`                                                           |
+| `org:member` (built-in)  | Same as `org:read_only_operator`                                                       |
+
+A Production instance without Clerk's B2B add-on cannot create custom roles. Use the built-in `org:admin` for the platform owners and `org:member` for everyone else; the five custom roles stay available once the add-on is enabled.
 
 For each new operator, create an application invitation under Clerk's **User & authentication → Invitations** so Invite-only mode permits their account to sign up. Then add that account to **Internal Operator** from its organization membership screen and assign exactly the least privileged suitable role. Existing accounts in this same Clerk application do not need to be recreated. Use `org:read_only_operator` as the default. Assign `org:platform_owner` only to trusted owners who need its broad access. After any role change, verify the organization membership shows the intended role.
 
-Clerk assigns the creator of a new organization its configured Creator Role, often `org:admin`. The Operator API does not accept `org:admin` or `org:member`; it accepts only the five role keys in the table above. After creating **Internal Operator**, assign your own membership `org:platform_owner` (or configure the Creator Role to that custom role if it has Clerk's required organization-management system permissions). Otherwise sign-in can succeed while every Operator API request is denied.
+Clerk assigns the creator of a new organization its configured Creator Role, usually `org:admin`, which the API treats as the platform owner. Keep the default role for new members `org:member` (read-only), and give `org:admin` only to trusted owners. Any other role key is denied, so sign-in can succeed while every Operator API request is refused.
 
 Clerk roles establish the operator's recognized membership role; custom Clerk permissions do not grant Drezivo API permissions. The API enforces its own role-to-permission mapping on every protected request. Unknown roles, users outside **Internal Operator**, and users without an active membership are denied.
 
