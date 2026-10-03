@@ -58,7 +58,7 @@ function parseQuery(req: Request): { filters: OperatorDirectoryFilters; limit: n
   const { limit, cursor, ...filters } = parsed.data;
   return { filters, limit, cursor };
 }
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator directory service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator directory service is unavailable.', { cause: error })); }
 function hasFutureData(items: OperatorDirectoryItem[], cursor: OperatorDirectoryCursor | null): boolean {
   return items.some((item) => item.last_activity_at !== null && new Date(item.last_activity_at).getTime() > Date.now()) || Boolean(cursor?.lastActivityAt && new Date(cursor.lastActivityAt).getTime() > Date.now());
 }

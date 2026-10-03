@@ -181,7 +181,7 @@ function send(res: Response, status: number, data: unknown): void {
   res.status(status).setHeader('Cache-Control', 'no-store').json({ success: true, data, request_id: requestId(res) });
 }
 function forward(next: NextFunction, error: unknown): void {
-  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is temporarily unavailable.'));
+  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is temporarily unavailable.', { cause: error }));
 }
 
 export function createOperatorTenantAdminRouter(

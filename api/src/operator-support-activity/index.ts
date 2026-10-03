@@ -76,7 +76,7 @@ function parseQuery(req: Request, options: RouterOptions): { filters: SupportAct
   if ((filters.action && options.actionCodes && !options.actionCodes.includes(filters.action)) || (filters.entity_type && options.entityTypes && !options.entityTypes.includes(filters.entity_type)) || (filters.occurred_from && filters.occurred_to && new Date(filters.occurred_to).getTime() <= new Date(filters.occurred_from).getTime()) || (filters.occurred_from && new Date(filters.occurred_from).getTime() > Date.now()) || (filters.occurred_to && new Date(filters.occurred_to).getTime() > Date.now())) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
   return { filters, limit, cursor };
 }
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The support activity read service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The support activity read service is unavailable.', { cause: error })); }
 export function createOperatorSupportActivityRouter(port: SupportActivityPort = unavailableSupportActivityPort, authorize: RequestHandler = (_req, _res, next) => next(), options: RouterOptions = {}): Router {
   const router = express.Router();
   const permissionMiddleware = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));

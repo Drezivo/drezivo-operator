@@ -278,7 +278,7 @@ function parseQuery(req: Request): OperatorAnalyticsQuery {
 }
 
 function sendError(next: NextFunction, error: unknown): void {
-  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The analytics read service is unavailable.'));
+  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The analytics read service is unavailable.', { cause: error }));
 }
 
 export function createOperatorAnalyticsRouter(

@@ -67,7 +67,7 @@ function parseQuery(req: Request, options: AuditRouterOptions): { filters: Audit
   return { filters, limit, cursor };
 }
 
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The audit read service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The audit read service is unavailable.', { cause: error })); }
 export function createOperatorAuditRouter(auditPort: AuditPort = unavailableAuditPort, authorize: RequestHandler = (_req, _res, next) => next(), options: AuditRouterOptions = {}): Router {
   const router = express.Router();
   const permissionMiddleware = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));

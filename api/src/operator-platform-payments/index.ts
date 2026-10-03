@@ -114,7 +114,7 @@ function send(res: Response, status: number, data: unknown): void {
   res.status(status).setHeader('Cache-Control', 'no-store').json({ success: true, data, request_id: requestIdOf(res) });
 }
 function forward(next: NextFunction, error: unknown): void {
-  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Payment method administration is temporarily unavailable.'));
+  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Payment method administration is temporarily unavailable.', { cause: error }));
 }
 const fieldsOf = (input: z.infer<typeof createInputSchema> | z.infer<typeof updateInputSchema>): PlatformPaymentMethodFields => ({
   label: input.label, account_name: input.account_name, account_number: input.account_number, instructions: input.instructions, sort_order: input.sort_order,

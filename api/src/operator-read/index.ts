@@ -96,7 +96,7 @@ function parseQuery(req: Request, options: ReadRouterOptions, route: 'overview' 
   return { result: result.data, filters };
 }
 
-function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.')); }
+function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.', { cause: error })); }
 export function createOperatorReadRouter(readPort: ReadPort = unavailableReadPort, authorize: RequestHandler = (_req, _res, next) => next(), options: ReadRouterOptions = {}): Router {
   const router = express.Router();
   const permissionMiddleware = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));

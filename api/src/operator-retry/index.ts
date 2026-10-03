@@ -63,7 +63,7 @@ async function commandCall<T>(call: () => Promise<T>): Promise<T> {
   try { return await call(); } catch { throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'); }
 }
 function sendError(next: NextFunction, error: unknown): void {
-  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'));
+  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.', { cause: error }));
 }
 
 /** Route factory for future mounting after the business command contract is approved. */
