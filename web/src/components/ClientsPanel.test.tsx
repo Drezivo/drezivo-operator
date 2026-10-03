@@ -2,7 +2,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientsPanel, type ClientsNavigation, type ClientsTab } from "./ClientsPanel";
-import { clientAttention, clientState, endOfManilaDay, formatManila, matchesFilter, type ClientDetail, type ClientFilter } from "@/lib/clients";
+import { DEFAULT_CLIENT_FILTER, clientAttention, clientState, endOfManilaDay, formatManila, matchesFilter, type ClientDetail, type ClientFilter } from "@/lib/clients";
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const memberId = "33333333-3333-4333-8333-333333333333";
@@ -29,7 +29,7 @@ const getToken = vi.fn().mockResolvedValue("operator-session-token");
 
 /** Holds navigation state the way the console shell does with the URL. */
 function Harness({ initial = {} }: { initial?: { client?: string | null; tab?: ClientsTab; filter?: ClientFilter } }) {
-  const [state, setState] = useState({ client: null as string | null, tab: "businesses" as ClientsTab, filter: "attention" as ClientFilter, ...initial });
+  const [state, setState] = useState({ client: null as string | null, tab: "businesses" as ClientsTab, filter: DEFAULT_CLIENT_FILTER, ...initial });
   const navigate = (next: ClientsNavigation) => setState((current) => ({
     client: next.tab ? null : next.client !== undefined ? next.client : current.client,
     tab: next.tab ?? current.tab,
@@ -96,12 +96,15 @@ describe("pilot access states", () => {
 });
 
 describe("ClientsPanel", () => {
-  it("opens on businesses that need attention, counts every group, and switches filters", async () => {
+  it("opens on every business, counts every group, and switches filters", async () => {
     mockFetch(listAndDetail);
     render(<Harness />);
     expect(await screen.findByText("Luna Gowns")).toBeInTheDocument();
+    expect(screen.getByText("Barong Hub")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: /Needs attention/ }));
+    expect(screen.getByText("Luna Gowns")).toBeInTheDocument();
     expect(screen.queryByText("Barong Hub")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Needs attention/ })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: /^Paid/ }));
     expect(screen.getByText("Barong Hub")).toBeInTheDocument();
     expect(screen.queryByText("Luna Gowns")).not.toBeInTheDocument();
