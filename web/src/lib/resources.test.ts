@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_OPERATOR_VIEWS, enabledResourceIds, visibleResources } from "./resources";
 
 describe("enabled operator views", () => {
-  it("shows only the live views by default, with Clients first", () => {
+  it("enables the complete implemented console by default", () => {
     expect(enabledResourceIds(undefined)).toEqual([...DEFAULT_OPERATOR_VIEWS]);
-    expect(visibleResources("").map((view) => view.id)).toEqual(["clients", "payments", "payment-methods"]);
+    expect(visibleResources("").map((view) => view.id)).toEqual([...DEFAULT_OPERATOR_VIEWS]);
   });
 
   it("enables configured views in navigation order and ignores unknown or duplicate ids", () => {

@@ -1,5 +1,6 @@
 import { Buildings, ChartLineUp, ClockCounterClockwise, WarningCircle } from "@phosphor-icons/react";
 import Link from "next/link";
+import { formatMinorAmount } from "@/lib/analytics";
 import { Overview } from "@/lib/api";
 import { EmptyPanel } from "./StatePanels";
 import { StatusBadge } from "./StatusBadge";
@@ -63,7 +64,7 @@ export function OverviewPanel({ data, onKeepSidebarScroll = () => {} }: { data: 
     </div>
 
     <section className="content-card overview-analytics-card" aria-label="Performance analytics">
-      <div><span className="eyebrow">Performance</span><h2>Verified cash collection</h2><p>Unavailable: there is no verified payment timestamp or collection workflow.</p></div>
+      <div><span className="eyebrow">Performance</span><h2>Verified cash collection</h2>{overview.verified_cash_collections ? overview.verified_cash_collections.length ? <p>{overview.verified_cash_collections.map(c=>`${formatMinorAmount(c.amount_minor,c.currency)} from ${c.payment_count} verified payments`).join(" / ")} (all time)</p> : <p>No verified subscription payments yet.</p> : <p>Verified payment collection totals were not included in this response.</p>}</div>
       <Link className="button button-secondary" href="/?view=analytics" scroll={false} onClick={onKeepSidebarScroll}><ChartLineUp size={16} />View analytics</Link>
     </section>
 
@@ -99,7 +100,7 @@ export function OverviewPanel({ data, onKeepSidebarScroll = () => {} }: { data: 
         <table>
           <thead><tr><th scope="col">Business</th><th scope="col">Slug</th><th scope="col">Status</th><th scope="col">Created</th></tr></thead>
           <tbody>{recentBusinesses.map(({ id, name, slug, status, created_at }) => <tr key={id}>
-            <td><Link className="table-business-link" aria-label={`View business ${name}`} href={`/?view=businesses&businessId=${encodeURIComponent(id)}`} scroll={false} onClick={onKeepSidebarScroll}>{name}</Link></td><td>{slug}</td><td><StatusBadge value={status} /></td><td>{formatDateTime(created_at)} (Asia/Manila)</td>
+            <td><Link className="table-business-link" aria-label={`View business ${name}`} href={`/?view=clients&client=${encodeURIComponent(id)}`} scroll={false} onClick={onKeepSidebarScroll}>{name}</Link></td><td>{slug}</td><td><StatusBadge value={status} /></td><td>{formatDateTime(created_at)} (Asia/Manila)</td>
           </tr>)}</tbody>
         </table>
       </div> : <EmptyPanel title="No recent businesses" body="The API returned no businesses for this snapshot." />}

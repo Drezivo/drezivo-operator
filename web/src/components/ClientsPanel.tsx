@@ -13,6 +13,7 @@ import {
 } from "@/lib/clients";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "./StatePanels";
 import { PaymentReviewList } from "./PaymentReview";
+import { WorkspacePanel } from "./WorkspacePanel";
 import { StatusBadge } from "./StatusBadge";
 
 type Notice = { message: string; requestId: string } | null;
@@ -26,6 +27,7 @@ const FILTERS: Array<{ id: ClientFilter; label: string }> = [
   { id: "unpaid", label: "Unpaid" },
   { id: "locked", label: "Locked" },
   { id: "paid", label: "Paid" },
+  { id: "free", label: "Free" },
   { id: "all", label: "All" },
 ];
 
@@ -37,9 +39,10 @@ function asApiError(error: unknown): ApiError {
  * Client administration: every business and person, and the actions an operator takes on them.
  * Navigation state (open business, tab, filter) lives in the URL so links and Back work.
  */
-export function ClientsPanel({ getToken, clientId = null, tab = "businesses", filter = DEFAULT_CLIENT_FILTER, onNavigate }: {
+export function ClientsPanel({ getToken, workspaceGrantId = null, clientId = null, tab = "businesses", filter = DEFAULT_CLIENT_FILTER, onNavigate }: {
   getToken: () => Promise<string | null>;
   clientId?: string | null;
+  workspaceGrantId?: string | null;
   tab?: ClientsTab;
   filter?: ClientFilter;
   onNavigate: (next: ClientsNavigation) => void;
@@ -50,7 +53,7 @@ export function ClientsPanel({ getToken, clientId = null, tab = "businesses", fi
     return value;
   }, [getToken]);
 
-  if (clientId) return <ClientDetailView tenantId={clientId} token={token} onBack={() => onNavigate({ client: null })} />;
+  if (clientId) return <ClientDetailView workspaceGrantId={workspaceGrantId} tenantId={clientId} token={token} onBack={() => onNavigate({ client: null })} />;
   return <div className="clients">
     <div className="segmented" role="tablist" aria-label="Show">
       {(["businesses", "people"] as const).map((id) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => onNavigate({ tab: id })}>{id === "businesses" ? "Businesses" : "People"}</button>)}
@@ -153,7 +156,7 @@ function PeopleList({ token, onOpenBusiness }: { token: (signal?: AbortSignal) =
   </>;
 }
 
-function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onBack: () => void }) {
+function ClientDetailView({ tenantId, token, onBack, workspaceGrantId }: { workspaceGrantId?: string | null; tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onBack: () => void }) {
   const [detail, load, replaceDetail] = useCachedLoad<ClientDetail>(clientPaths.detail(tenantId), token);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -191,11 +194,11 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
   const state = clientState(client);
   const busy = pending !== null;
   const locked = state === "locked";
-  const canSetTrial = subscription !== null && subscription.status !== "active" && subscription.status !== "cancelled";
+  const canSetTrial = subscription !== null && subscription.plan_code !== "free" && subscription.status !== "active" && subscription.status !== "cancelled";
   const canExtendViewOnly = state === "view_only" || state === "expired";
   const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
   const trialDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.trial_ends_at ? new Date(subscription.trial_ends_at).getTime() : 0)), 7);
-  const paidDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.status === "active" ? new Date(subscription.current_period_end).getTime() : 0)), 30);
+  const paidDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.status === "active" && subscription.current_period_end ? new Date(subscription.current_period_end).getTime() : 0)), 30);
 
   return <div className="clients client-detail">
     <BackButton onBack={onBack} />
@@ -207,6 +210,7 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
     {notice && <p className="action-success" role="status"><CheckCircle size={16} />{notice.message}<RequestId requestId={notice.requestId} /></p>}
     {error && <StatePanel error={error} dependency="Business API" onRetry={() => setError(null)} />}
 
+    <WorkspacePanel initialGrantId={workspaceGrantId} key={tenantId} tenantId={tenantId} businessName={client.name} token={token} />
     <div className="client-layout">
       <div className="client-main">
         <section className="panel">
@@ -214,8 +218,10 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
           <dl className="client-facts">
             <div><dt>Plan</dt><dd className="capitalize">{subscription?.plan_code ?? "—"}</dd></div>
             <div><dt>Subscription</dt><dd>{subscription ? <StatusBadge value={subscription.status} /> : "—"}</dd></div>
-            <div><dt>Trial ends</dt><dd>{formatManila(subscription?.trial_ends_at, true)}</dd></div>
-            <div><dt>Paid until</dt><dd>{subscription?.status === "active" ? formatManila(subscription.current_period_end, true) : "—"}</dd></div>
+            {subscription?.plan_code === "free" ? <div><dt>Renewal</dt><dd>No renewal due</dd></div> : <>
+              <div><dt>Trial ends</dt><dd>{formatManila(subscription?.trial_ends_at, true)}</dd></div>
+              <div><dt>Paid until</dt><dd>{subscription?.status === "active" ? formatManila(subscription.current_period_end, true) : "—"}</dd></div>
+            </>}
             <div><dt>Time zone</dt><dd>{client.timezone}</dd></div>
             <div><dt>Joined</dt><dd>{formatManila(client.created_at)}</dd></div>
             <div className="fact-wide"><dt>Business ID</dt><dd className="mono">{client.tenant_id}</dd></div>
@@ -224,12 +230,12 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
 
         <section className="panel">
           <h3>Payments</h3>
-          <p className="muted panel-intro">Proofs the owner sent from Subscribe. Approving gives one more paid month from the later of today or the current end date, and emails the owner.</p>
+          <p className="muted panel-intro">{subscription?.plan_code === "free" ? "Upgrade proofs from Subscribe. Approval queues activation of the requested paid plan and an owner notification." : "Proofs the owner sent from Subscribe. Approving gives one more paid month from the later of today or the current end date, and queues an email to the owner."}</p>
           {client.payments.length === 0 ? <p className="muted">No payments sent yet.</p>
             : <PaymentReviewList payments={client.payments} token={token}
               onReviewed={(result, requestId, decision) => {
                 replaceDetail(result.tenant, requestId);
-                setNotice({ message: decision === "approve" ? "Payment approved. The owner is emailed and has full access again." : "Payment rejected. The owner sees your reason.", requestId });
+                setNotice({ message: decision === "approve" ? result.tenant.subscription?.plan_code === "free" ? "Payment approved. Upgrade activation and an owner notification are queued." : "Payment approved. The paid period has been updated. An email notification is queued." : "Payment rejected. The owner can see your reason in the app.", requestId });
               }} />}
         </section>
 
@@ -247,20 +253,11 @@ function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token
             </ul>}
         </section>
 
-        <section className="panel">
-          <h3>Recent activity</h3>
-          {client.recent_audit.length === 0 ? <p className="muted">No recorded activity yet.</p>
-            : <ol className="activity-list">{client.recent_audit.map((entry, index) => <li key={`${entry.occurred_at}-${index}`}>
-              <time dateTime={entry.occurred_at}>{formatManila(entry.occurred_at, true)}</time>
-              <span className="activity-action">{entry.action}</span>
-              <span className="muted">{entry.actor_kind === "operator" ? "Drezivo operator" : entry.actor_kind === "staff" ? "Business staff" : "System"}{entry.outcome !== "succeeded" ? ` · ${entry.outcome}` : ""}</span>
-            </li>)}</ol>}
-          <RequestId requestId={detail.requestId} />
-        </section>
+
       </div>
 
       <aside className="client-side" aria-label="Actions">
-        {subscription && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={subscription.status === "active" ? "Extend paid period" : "Record a payment"}
+        {subscription && subscription.plan_code !== "free" && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={subscription.status === "active" ? "Extend paid period" : "Record a payment"}
           description="Only for a payment the owner did not send through Subscribe (for example cash). Proofs sent in the app are approved under Payments. Pick the last day it covers."
           submitLabel={subscription.status === "active" ? "Save paid period" : "Mark as paid"} busy={busy} pending={pending === "activate"}
           fields={(values, set) => <label>Paid until<input type="date" required value={values.date ?? paidDefault} onChange={(event) => set("date", event.target.value)} /></label>}

@@ -16,7 +16,7 @@ export type ClientSummary = {
     plan_code: string;
     trial_ends_at: string | null;
     grace_ends_at: string | null;
-    current_period_end: string;
+    current_period_end: string | null;
   } | null;
   member_counts: { active: number; suspended: number; removed: number };
   /** A proof of subscription payment is waiting for review. */
@@ -37,11 +37,12 @@ export function personLabel(member: ClientMember): { primary: string; secondary:
 }
 export type ClientAuditEntry = { occurred_at: string; actor_kind: string; action: string; entity_type: string; outcome: string };
 export type PaymentStatus = "pending" | "verified" | "failed";
-/** One proof of payment a business sent for its Standard subscription. */
+/** One proof of subscription payment, including a requested Free-plan upgrade. */
 export type SubscriptionPayment = {
   payment_id: string; tenant_id: string; tenant_name: string; status: PaymentStatus;
   amount_minor: string; currency: string; reference: string | null; method_label: string | null;
   submitted_at: string; reviewed_at: string | null; reviewed_by: string | null; review_note: string | null; has_proof: boolean;
+  target_plan_code?: string | null;
 };
 /** Operator-only note; businesses never see these. */
 export type ClientNote = { id: string; body: string; author_label: string; created_at: string };
@@ -113,10 +114,10 @@ const DAY_MS = 86_400_000;
  * rules: full access until the trial or paid-through end, then view-only for 30 days (or until an
  * operator extension), then expired (only Subscribe works).
  */
-export type ClientState = "locked" | "cancelled" | "restricted" | "unpaid" | "trial" | "paid" | "view_only" | "expired" | "no_subscription";
+export type ClientState = "locked" | "cancelled" | "restricted" | "unpaid" | "trial" | "paid" | "free" | "view_only" | "expired" | "no_subscription";
 
 /** The instant access depends on: the trial end while trialing, otherwise the paid-through date. */
-export function accessEnd(subscription: NonNullable<ClientSummary["subscription"]>): string {
+export function accessEnd(subscription: NonNullable<ClientSummary["subscription"]>): string | null {
   return subscription.status === "trialing" ? subscription.trial_ends_at ?? subscription.current_period_end : subscription.current_period_end;
 }
 
@@ -128,7 +129,10 @@ export function clientState(client: ClientSummary, now: Date = new Date()): Clie
   // Pre-pilot lifecycle states. Business migration 0063 moved these rows; keep them readable.
   if (subscription.status === "restricted") return "restricted";
   if (subscription.status === "past_due") return "unpaid";
-  const end = new Date(accessEnd(subscription)).getTime();
+  if (subscription.plan_code === "free" && subscription.status === "active" && subscription.current_period_end === null) return "free";
+  const accessUntil = accessEnd(subscription);
+  if (!accessUntil) return "restricted";
+  const end = new Date(accessUntil).getTime();
   const nowMs = now.getTime();
   if (nowMs < end) return subscription.status === "trialing" ? "trial" : "paid";
   const extension = subscription.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : null;
@@ -137,18 +141,18 @@ export function clientState(client: ClientSummary, now: Date = new Date()): Clie
 }
 
 export const clientStateLabel: Record<ClientState, string> = {
-  locked: "Locked", cancelled: "Cancelled", restricted: "Restricted", unpaid: "Unpaid", trial: "Trial", paid: "Paid",
+  locked: "Locked", cancelled: "Cancelled", restricted: "Restricted", unpaid: "Unpaid", trial: "Trial", paid: "Paid", free: "Free",
   view_only: "View-only", expired: "Expired", no_subscription: "No subscription",
 };
 
 /** StatusBadge tone keys for each state (see StatusBadge's status sets). */
 export const clientStateTone: Record<ClientState, string> = {
-  locked: "restricted", cancelled: "cancelled", restricted: "restricted", unpaid: "past_due", trial: "trialing", paid: "active",
+  locked: "restricted", cancelled: "cancelled", restricted: "restricted", unpaid: "past_due", trial: "trialing", paid: "active", free: "active",
   view_only: "past_due", expired: "expired", no_subscription: "unknown",
 };
 
-export type ClientFilter = "attention" | "pending" | "trial" | "unpaid" | "locked" | "paid" | "all";
-export const CLIENT_FILTERS: readonly ClientFilter[] = ["attention", "pending", "trial", "unpaid", "locked", "paid", "all"];
+export type ClientFilter = "attention" | "pending" | "trial" | "unpaid" | "locked" | "paid" | "free" | "all";
+export const CLIENT_FILTERS: readonly ClientFilter[] = ["attention", "pending", "trial", "unpaid", "locked", "paid", "free", "all"];
 /** The Clients page opens on every business; the other chips narrow it down. */
 export const DEFAULT_CLIENT_FILTER: ClientFilter = "all";
 export const TRIAL_ENDING_DAYS = 3;
@@ -157,6 +161,7 @@ export const TRIAL_ENDING_DAYS = 3;
 export function needsAttention(client: ClientSummary, now: Date = new Date()): boolean {
   if (client.pending_payment) return true;
   const state = clientState(client, now);
+  if (state === "free") return false;
   if (state === "trial" || state === "paid") {
     const left = client.subscription ? daysUntil(accessEnd(client.subscription), now) : null;
     return left !== null && left <= TRIAL_ENDING_DAYS;
@@ -173,6 +178,7 @@ export function matchesFilter(client: ClientSummary, filter: ClientFilter, now: 
     case "unpaid": return state === "view_only" || state === "expired" || state === "unpaid" || state === "restricted";
     case "locked": return state === "locked";
     case "paid": return state === "paid";
+    case "free": return state === "free";
     default: return true;
   }
 }
@@ -187,6 +193,7 @@ function accessSentence(client: ClientSummary, now: Date): string {
   const state = clientState(client, now);
   const subscription = client.subscription;
   switch (state) {
+    case "free": return "Free plan - no renewal due";
     case "cancelled": return "Cancelled";
     case "locked": return "Locked by an operator";
     case "no_subscription": return "No subscription record";
@@ -196,6 +203,7 @@ function accessSentence(client: ClientSummary, now: Date): string {
   }
   if (!subscription) return "No subscription record";
   const end = accessEnd(subscription);
+  if (!end) return "No billing end date recorded";
   const left = daysUntil(end, now);
   if (state === "trial") return left === null ? "Trial" : left <= 0 ? "Trial ends today" : `Trial: ${left} day${left === 1 ? "" : "s"} left`;
   if (state === "paid") return left !== null && left <= TRIAL_ENDING_DAYS ? `Paid until ${formatManila(end)} — renewal due` : `Paid until ${formatManila(end)}`;

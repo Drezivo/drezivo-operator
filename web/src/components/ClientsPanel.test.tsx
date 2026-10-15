@@ -49,6 +49,14 @@ function mockFetch(handler: (url: string, init: RequestInit) => Response | Promi
 const listAndDetail = (url: string) => url.endsWith("/tenants") ? envelope({ items: [detail, paid] }) : envelope(detail);
 
 describe("client helpers", () => {
+  it("keeps perpetual Free businesses out of expiry triage while surfacing pending upgrades", () => {
+    const free: ClientDetail = { ...paid, subscription: { status: "active", plan_code: "free", current_period_end: null, trial_ends_at: null, grace_ends_at: null } };
+    expect(clientState(free)).toBe("free");
+    expect(clientAttention(free)).toBe("Free plan - no renewal due");
+    expect(matchesFilter(free, "attention")).toBe(false);
+    expect(matchesFilter({ ...free, pending_payment: true }, "attention")).toBe(true);
+    expect(clientState({ ...free, status: "restricted" })).toBe("locked");
+  });
   it("turns a date input into the end of that Manila day and rejects junk", () => {
     expect(endOfManilaDay("2026-10-20")).toBe("2026-10-20T23:59:59+08:00");
     expect(endOfManilaDay("20/10/2026")).toBeNull();
@@ -96,6 +104,16 @@ describe("pilot access states", () => {
 });
 
 describe("ClientsPanel", () => {
+  it("shows Free renewal and upgrade information without paid-date controls", async () => {
+    const free: ClientDetail = { ...paid, subscription: { status: "active", plan_code: "free", current_period_end: null, trial_ends_at: null, grace_ends_at: null } };
+    mockFetch(url => url.endsWith("/tenants") ? envelope({ items: [free] }) : envelope(free));
+    render(<Harness initial={{ client: free.tenant_id }} />);
+    expect(await screen.findByText("No renewal due")).toBeInTheDocument();
+    expect(screen.getByText(/Approval queues activation/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Extend paid period" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Set trial end" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Extend view-only access" })).not.toBeInTheDocument();
+  });
   it("opens on every business, counts every group, and switches filters", async () => {
     mockFetch(listAndDetail);
     render(<Harness />);
@@ -120,7 +138,8 @@ describe("ClientsPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Luna Gowns/ }));
     expect(await screen.findByText("People with access")).toBeInTheDocument();
     expect(screen.getByText("user_owner_a")).toBeInTheDocument();
-    expect(screen.getByText("catalogue.item.created")).toBeInTheDocument();
+    expect(screen.queryByText("catalogue.item.created")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recent activity")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All businesses" }));
     expect(await screen.findByRole("button", { name: /Needs attention/ })).toBeInTheDocument();
   });
@@ -243,7 +262,7 @@ describe("ClientsPanel", () => {
     const confirm = screen.getByRole("button", { name: "Approve payment" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
-    await screen.findByText(/Payment approved\. The owner is emailed/);
+    await screen.findByText(/Payment approved\. The paid period has been updated/);
     expect(posts).toHaveLength(1);
     expect(posts[0]!.url).toContain(`/tenants/${tenantId}/subscription-payments/${paymentId}/approve`);
     expect(JSON.parse(posts[0]!.body)).toEqual({ reason: "Reference matched in GCash" });

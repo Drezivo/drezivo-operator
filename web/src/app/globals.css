@@ -657,38 +657,38 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent-i
  * their native look without replacing the native element, so keyboard and screen-reader behaviour
  * stays the browser's own.
  */
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form) label:not(.checkbox-row) {
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form) :where(label:not(.checkbox-row)) {
   display: grid; gap: 6px; min-width: 0; color: var(--ink); font-size: var(--fs-label); font-weight: 600; line-height: 1.35;
 }
 .field-hint { display: block; margin-top: -2px; color: var(--muted); font-size: var(--fs-hint); font-weight: 400; line-height: 1.45; }
 .field-error { margin: 0; color: var(--danger-ink); font-size: var(--fs-hint); font-weight: 500; }
 
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select) {
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select) {
   width: 100%; min-height: var(--control-height); padding: 0 12px;
   border: 1px solid var(--border-strong); border-radius: var(--radius-control);
   color: var(--ink); background-color: var(--surface); font-size: var(--fs-input); line-height: 1.4;
   transition: border-color 180ms cubic-bezier(.4,0,.2,1), box-shadow 180ms cubic-bezier(.4,0,.2,1), background-color 180ms cubic-bezier(.4,0,.2,1);
 }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form) textarea { min-height: 88px; padding: 10px 12px; resize: vertical; }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :is(input, textarea, select)::placeholder { color: var(--placeholder); }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select):hover:not(:disabled) { border-color: var(--border-hover); }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select):focus-visible {
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form) textarea { min-height: 88px; padding: 10px 12px; resize: vertical; }
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :is(input, textarea, select)::placeholder { color: var(--placeholder); }
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select):hover:not(:disabled) { border-color: var(--border-hover); }
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :where(input:not([type="checkbox"], [type="radio"], [type="file"]), textarea, select):focus-visible {
   border-color: var(--accent-ink); outline: 0; box-shadow: 0 0 0 3px var(--focus-soft);
 }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :is(input, textarea, select):disabled { color: var(--disabled-ink); background: var(--surface-muted); cursor: not-allowed; }
-:is(.action-form, .grant-form, .retry-form, .row-form, .note-form) :is(input, textarea):user-invalid { border-color: var(--danger-ink); }
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :is(input, textarea, select):disabled { color: var(--disabled-ink); background: var(--surface-muted); cursor: not-allowed; }
+:is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form) :is(input, textarea):user-invalid { border-color: var(--danger-ink); }
 
 /*
  * The shared control rule above wraps the controls in :where() so it stays low-specificity: the
  * textarea, select, number, date and file rules below override it without !important.
  */
 /* Select: native element, custom chevron drawn in the accent colour of the active theme. */
-:is(.action-form, .grant-form, .analytics-toolbar) select {
+:is(.action-form, .grant-form, .analytics-toolbar, .console-filters, .workspace-access-form, .workspace-toolbar, .support-access-form, .business-select-field, .setup-card form) select {
   appearance: none; padding-right: 40px; cursor: pointer;
   background-repeat: no-repeat; background-position: right 12px center; background-size: 16px 16px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237a5830' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
-:root[data-theme="dark"] :is(.action-form, .grant-form, .analytics-toolbar) select {
+:root[data-theme="dark"] :is(.action-form, .grant-form, .analytics-toolbar, .console-filters, .workspace-access-form, .workspace-toolbar, .support-access-form, .business-select-field, .setup-card form) select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23d4b483' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
 }
 .analytics-toolbar select { width: auto; min-width: 160px; }
@@ -739,6 +739,111 @@ html { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--accent-i
   .action-buttons .button, .action-buttons .text-button { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .analytics-toolbar, .business-picker) :is(input, textarea, select),
+  :is(.action-form, .grant-form, .retry-form, .row-form, .note-form, .support-access-form, .console-filters, .workspace-access-form, .workspace-toolbar, .workspace-correction, .workspace-delete-form, .business-select-field, .setup-card form, .analytics-toolbar, .business-picker) :is(input, textarea, select),
   :is(.action-form, .grant-form) input[type="file"]::file-selector-button { transition: none; }
 }
+
+.console-filters {display:flex;flex-wrap:wrap;align-items:end;gap:12px;margin:0 0 20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card)}
+.console-filters label {display:grid;gap:6px;flex:1 1 180px;color:var(--body);font-size:var(--fs-label)}
+.console-filters input,.console-filters select {width:100%;min-height:44px}
+.console-detail {display:block;color:var(--muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere;margin-top:5px;max-width:32ch}
+.audit-panel table td {vertical-align:top}
+.audit-panel details {min-width:100px;max-width:230px}
+.audit-panel summary {cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.audit-panel .muted {margin-bottom:20px}
+.session-audit-error {padding:12px 20px;border:1px solid var(--red);background:var(--surface);color:var(--red)}
+.setup-card form {display:grid;gap:20px;margin-top:24px}
+.setup-card label {display:grid;gap:8px}
+.setup-card select {min-height:44px}
+.local-environment {color:var(--amber)}
+
+
+/* Scoped operator workspace tools. */
+.workspace-panel { min-width: 0; margin-block: 1.5rem; }
+.workspace-heading p { max-width: 76ch; }
+.workspace-access-form, .workspace-toolbar, .workspace-toolbar form { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
+.workspace-access-form label, .workspace-toolbar label, .workspace-correction label, .workspace-delete-form label { display: grid; gap: .4rem; font-size: .875rem; }
+.workspace-reason { flex: 1; min-width: 14rem; }
+.workspace-scope { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center; padding: 1rem; margin-block: 1rem; border: 1px solid var(--neutral-border); border-radius: var(--radius-control); background: var(--neutral-surface); }
+.workspace-scope p { margin: .25rem 0 0; font-size: .8rem; overflow-wrap: anywhere; }
+.workspace-scope.workspace-repair { background: var(--warning-surface); border-color: var(--warning-border); }
+.workspace-toolbar { margin-block: 1.25rem; }
+.workspace-table-scroll { max-width: 100%; overflow-x: auto; border-block: 1px solid var(--border, #d9d5ce); }
+.workspace-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.workspace-table caption { text-align: left; font-weight: 600; padding: .8rem 0; }
+.workspace-table th, .workspace-table td { text-align: left; vertical-align: top; padding: .8rem .6rem; border-bottom: 1px solid var(--border, #d9d5ce); min-width: 8rem; max-width: 25rem; overflow-wrap: anywhere; }
+.workspace-table th { text-transform: capitalize; }
+.workspace-table td.mono { font-size: .72rem; min-width: 13rem; }
+.workspace-row-actions { display: grid; gap: .8rem; min-width: 10rem; }
+.workspace-row-actions button { text-align: left; background: transparent; border: 0; color: inherit; text-decoration: underline; cursor: pointer; padding: 0; }
+.workspace-row-actions button.text-danger { color: var(--danger-ink); }
+.workspace-row-actions button:disabled { opacity: .4; cursor: default; }
+.workspace-pagination { display: flex; gap: 1rem; align-items: center; justify-content: flex-end; margin-top: 1rem; }
+.workspace-edit, .workspace-delete { margin-block: 1.5rem; padding: 1.25rem; border: 1px solid var(--border, #d9d5ce); }
+.workspace-edit dd { overflow-wrap: anywhere; }
+.workspace-delete { border-color: var(--danger-border); background: var(--danger-surface); }
+.workspace-correction, .workspace-delete-form { display: grid; gap: 1rem; max-width: 45rem; margin-block: 1rem; }
+.workspace-correction label { text-transform: capitalize; }
+.workspace-acknowledge { display: flex !important; align-items: start; }
+.workspace-correction button, .workspace-delete-form button { justify-self: start; }
+@media(max-width: 700px) { .workspace-access-form, .workspace-toolbar, .workspace-toolbar form { align-items: stretch; flex-direction: column; } .workspace-pagination { flex-wrap: wrap; justify-content: start; } }
+
+/* Shared support workflows and control consistency. */
+.page-content select, .setup-card select { min-height: 44px; font: inherit; }
+.page-content :is(input, textarea, select)::placeholder { color: var(--placeholder); opacity: 1; }
+.page-content select:focus-visible, .setup-card select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.business-select-field { min-width: 0; }
+.business-picker { min-width: min(340px, 100%); }
+.console-filters > .business-select-field { flex: 1 1 240px; }
+.console-filters .business-select-field label { width: 100%; }
+.support-access-page { display: grid; gap: 24px; }
+.support-access-create .card-heading, .support-history .card-heading { align-items: start; }
+.support-access-create .card-heading p, .support-history .card-heading p { margin: 8px 0 0; max-width: 72ch; font-size: var(--text-sm); line-height: 1.6; }
+.support-access-form { display: grid; gap: 24px; max-width: 860px; margin-top: 24px; }
+.support-access-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 20px; align-items: end; }
+.support-access-form .action-buttons { justify-content: space-between; }
+.support-access-form .action-buttons p { max-width: 50ch; margin: 0; }
+.access-permissions { padding: 0; margin: 0; border: 0; min-width: 0; }
+.access-permissions legend { padding: 0; margin-bottom: 10px; color: var(--ink); font-size: var(--fs-label); font-weight: 600; }
+.access-permissions label.permission-choice { display: flex; gap: 12px; align-items: start; padding: 14px 0; min-height: 64px; border-top: 1px solid var(--line-soft); cursor: pointer; font-weight: 400; }
+.permission-choice > input { flex: 0 0 auto; width: 20px; height: 20px; margin: 2px 0; accent-color: var(--accent-ink); }
+.permission-choice > span { display: grid; gap: 5px; min-width: 0; }
+.permission-choice strong { font-weight: 600; color: var(--ink); }
+.permission-choice strong small { margin-left: 8px; color: var(--muted); font-weight: 400; }
+.permission-choice > span > span { font-size: var(--fs-hint); line-height: 1.6; color: var(--muted); max-width: 70ch; }
+.access-permissions .permission-required { cursor: default; }
+.permission-selected strong { color: var(--accent-ink); }
+.access-created { padding-block: 20px 4px; }
+.access-created h3 { margin-top: 0; }
+.access-created p { max-width: 70ch; line-height: 1.6; }
+.permission-summary { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--text-sm); min-width: 180px; }
+.technical-details { margin-top: 8px; font-size: var(--text-xs); color: var(--muted); }
+.technical-details summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
+.support-history .table-action { display: block; min-height: 44px; padding-block: 10px; }
+.inline-confirmation { min-width: 240px; max-width: 320px; }
+.inline-confirmation p { margin: 0 0 10px; white-space: normal; }
+.inline-confirmation .action-buttons { justify-content: start; flex-wrap: wrap; }
+.workspace-access-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: 20px; margin-top: 20px; }
+.workspace-access-form .access-permissions { grid-column: 1 / -1; }
+.workspace-access-form .workspace-reason { min-width: 0; }
+.workspace-table th, .workspace-table td { padding-block: 12px; }
+.workspace-row-actions button { min-height: 44px; }
+.workspace-table td.mono { white-space: nowrap; }
+.console-filter-advanced { flex-basis: 100%; }
+.console-filter-advanced summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.console-filter-advanced > div { display: flex; flex-wrap: wrap; gap: 16px; padding-top: 12px; }
+.console-filter-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.console-filters .field-error { flex-basis: 100%; }
+@media(max-width: 700px) {
+  .support-access-fields, .workspace-access-form { grid-template-columns: minmax(0, 1fr); }
+  .workspace-access-form .access-permissions { grid-column: auto; }
+  .support-access-form .action-buttons { align-items: stretch; }
+  .support-history .card-heading { flex-wrap: wrap; }
+  .business-picker { width: 100%; min-width: 0; }
+}
+
+.technical-details summary, .console-filter-advanced summary { display: list-item; padding-block: 8px; min-height: 36px; }
+.workspace-table-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.permission-choice input:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+.page-content :is(input:not([type="checkbox"], [type="radio"]), textarea, select), .setup-card select { font-weight: 400; }
