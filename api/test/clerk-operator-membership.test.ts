@@ -38,19 +38,15 @@ describe('Clerk operator membership', () => {
     }
   });
 
-  it('maps Clerk built-in roles: admin is the platform owner, member is read-only', async () => {
-    const request = {} as Request;
-    for (const [clerkRole, operatorRole] of [['org:admin', 'platform_owner'], ['org:member', 'read_only_operator']] as const) {
-      const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [{ ...membership, role: clerkRole }] }) });
-      await expect(port.resolveMembership({ clerkUserId: userId, operatorOrganizationId: organizationId })).resolves.toEqual({ active: true, roles: [operatorRole] });
+  it('grants Superadmin only to the dedicated organization admin or owner', async () => {
+    for (const role of ['org:admin','org:platform_owner']) {
+      const port=createClerkAuthorizationPort({organizationId,listMemberships:async()=>({data:[{...membership,role}]})});
+      await expect(port.resolveMembership({clerkUserId:userId,operatorOrganizationId:organizationId})).resolves.toEqual({active:true,roles:['platform_owner']});
     }
-    const member: SafeOperatorPrincipal = { clerkUserId: userId, operatorOrganizationId: organizationId, roles: ['read_only_operator'], requestId: 'req' };
-    const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [{ ...membership, role: 'org:member' }] }) });
-    await expect(port.resolvePermission({ principal: member, permission: 'operator.overview.read', request })).resolves.toBe(true);
-    for (const permission of ['tenant.admin.manage', 'support.grant.create', 'business.summary.read', 'subscription.read']) {
-      await expect(port.resolvePermission({ principal: member, permission, request })).resolves.toBe(false);
+    for (const role of ['org:member','org:platform_operator','org:support_operator','org:billing_operator','org:read_only_operator']) {
+      const port=createClerkAuthorizationPort({organizationId,listMemberships:async()=>({data:[{...membership,role}]})});
+      await expect(port.resolveMembership({clerkUserId:userId,operatorOrganizationId:organizationId})).resolves.toEqual({active:false,roles:[]});
     }
-    await expect(port.resolveTenantScope({ principal: member, tenantId: '550e8400-e29b-41d4-a716-446655440000', request })).resolves.toBe(false);
   });
 
   it('maps Clerk outages and timeouts to a safe provider failure', async () => {
@@ -61,37 +57,13 @@ describe('Clerk operator membership', () => {
     await expect(hanging(userId)).resolves.toEqual({ active: false, reason: 'provider_unavailable' });
   });
 
-  it('keeps role permissions narrow and grants full operator access only to platform owners', async () => {
-    const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [membership] }) });
-    const resolved = await port.resolveMembership({ clerkUserId: userId, operatorOrganizationId: organizationId });
-    expect(resolved).toEqual({ active: true, roles: ['platform_owner'] });
-    const principal: SafeOperatorPrincipal = { clerkUserId: userId, operatorOrganizationId: organizationId, roles: ['platform_owner'], requestId: 'req' };
-    const request = {} as Request;
-    await expect(port.resolvePermission({ principal, permission: 'support.grant.create', request })).resolves.toBe(true);
-    await expect(port.resolveTenantScope({ principal, tenantId: '550e8400-e29b-41d4-a716-446655440000', request })).resolves.toBe(true);
-
-    const operatorPort = createClerkAuthorizationPort({
-      organizationId,
-      listMemberships: async () => ({ data: [{ ...membership, role: 'org:platform_operator' }] }),
-    });
-    const operator: SafeOperatorPrincipal = { ...principal, roles: ['platform_operator'] };
-    await expect(operatorPort.resolvePermission({ principal: operator, permission: 'operator.overview.read', request })).resolves.toBe(true);
-    await expect(operatorPort.resolvePermission({ principal: operator, permission: 'business.summary.read', request })).resolves.toBe(false);
-    await expect(operatorPort.resolveTenantScope({ principal: operator, tenantId: '550e8400-e29b-41d4-a716-446655440000', request })).resolves.toBe(false);
-  });
-
-  it('grants platform analytics only to the approved platform owner and billing roles', async () => {
-    const request = {} as Request;
-    for (const [clerkRole, operatorRole, allowed] of [
-      ['org:platform_owner', 'platform_owner', true],
-      ['org:billing_operator', 'billing_operator', true],
-      ['org:platform_operator', 'platform_operator', false],
-      ['org:support_operator', 'support_operator', false],
-      ['org:read_only_operator', 'read_only_operator', false],
-    ] as const) {
-      const port = createClerkAuthorizationPort({ organizationId, listMemberships: async () => ({ data: [{ ...membership, role: clerkRole }] }) });
-      const principal: SafeOperatorPrincipal = { clerkUserId: userId, operatorOrganizationId: organizationId, roles: [operatorRole], requestId: 'req' };
-      await expect(port.resolvePermission({ principal, permission: 'platform.analytics.read', request })).resolves.toBe(allowed);
-    }
+  it('denies legacy specialist principals and unknown permissions', async()=>{
+    const port=createClerkAuthorizationPort({organizationId,listMemberships:async()=>({data:[membership]})});
+    const principal:SafeOperatorPrincipal={clerkUserId:userId,operatorOrganizationId:organizationId,roles:['platform_owner'],requestId:'req'};
+    const request={} as Request;
+    await expect(port.resolvePermission({principal,permission:'audit.read',request})).resolves.toBe(true);
+    await expect(port.resolvePermission({principal,permission:'unknown.permission',request})).resolves.toBe(false);
+    for(const role of ['platform_operator','support_operator','billing_operator','read_only_operator'] as const)
+      await expect(port.resolvePermission({principal:{...principal,roles:[role]},permission:'operator.overview.read',request})).resolves.toBe(false);
   });
 });

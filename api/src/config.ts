@@ -8,6 +8,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(5080),
   OPERATOR_API_HOST: z.enum(['0.0.0.0', '127.0.0.1']).default('0.0.0.0'),
   OPERATOR_CORS_ORIGINS: z.string().optional(),
+  OPERATOR_CLERK_WEBHOOK_SIGNING_SECRET: z.string().min(1).optional(),
   CLERK_SECRET_KEY: z.string().min(1).optional(),
   CLERK_PUBLISHABLE_KEY: z.string().min(1).optional(),
   OPERATOR_CLERK_ORGANIZATION_ID: z.string().min(1).optional(),

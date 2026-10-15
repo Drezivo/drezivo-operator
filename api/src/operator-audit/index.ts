@@ -6,13 +6,17 @@ import { AppError } from '../errors.js';
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
-const actorKinds = ['staff', 'operator', 'system'] as const;
+const actorKinds = ['staff', 'operator', 'system', 'unrecorded'] as const;
+const platformBillingActions = new Set(['subscription.free_started','subscription.free_trial_started','subscription.free_upgrade_payment_approved','subscription.plan_change.rejected','subscription.payment.submitted','subscription.payment.verified','subscription.payment.failed','subscription.trial_started','subscription.trial_expired','subscription.grace_expired','subscription.past_due','subscription.restricted','subscription.plan_changed','subscription.renewed','subscription.converted','subscription.cancelled','billing.subscription.created','billing.subscription.activated','billing.subscription.cancelled']);
 const outcomes = ['succeeded', 'rejected', 'failed'] as const;
 const token = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_.:-]+$/);
 const opaqueKey = z.string().min(1).max(200).regex(/^[A-Za-z0-9_.:-]+$/);
 const safeString = z.string().max(500).regex(/^[^\u0000-\u001f\u007f]*$/);
 
 export const auditEventSchema = z.object({
+  tenant_id: uuid.nullable().optional(),
+  business_name: z.string().max(200).nullable().optional(),
+  billing: z.object({ amount_minor: z.string().regex(/^[0-9]{1,16}$/).nullable(), currency: z.string().regex(/^[A-Z]{3}$/).nullable(), due_at: isoDate.nullable(), payer_key: opaqueKey.nullable().optional(), paid_at: isoDate.nullable().optional() }).strict().nullable().optional(),
   event_id: uuid,
   occurred_at: isoDate,
   actor_kind: z.enum(actorKinds),
@@ -26,7 +30,7 @@ export const auditEventSchema = z.object({
   redacted_summary: safeString.nullable(),
 }).strict();
 export type AuditEvent = z.infer<typeof auditEventSchema>;
-export type AuditFilters = { tenant_id?: string; actor_kind?: (typeof actorKinds)[number]; entity_type?: string; action?: string; outcome?: (typeof outcomes)[number]; occurred_from?: string; occurred_to?: string };
+export type AuditFilters = { tenant_id?: string; actor_key?: string; actor_kind?: (typeof actorKinds)[number]; entity_type?: string; action?: string; outcome?: (typeof outcomes)[number]; occurred_from?: string; occurred_to?: string };
 export type AuditCursor = { occurredAt: string; eventId: string };
 export type AuditPort = {
   listAuditEvents(input: { filters: AuditFilters; limit: number; cursor: AuditCursor | null; requestId: string }): Promise<{ items: AuditEvent[]; next_cursor: AuditCursor | null }>;
@@ -39,7 +43,7 @@ export const unavailableAuditPort: AuditPort = {
 type CursorPayload = { v: 1; occurred_at: string; event_id: string; filter_hash: string };
 const cursorSecret = 'drezivo-operator-audit-cursor-v1';
 function filterHash(filters: AuditFilters): string {
-  return createHash('sha256').update(cursorSecret).update(JSON.stringify({ tenant_id: filters.tenant_id ?? null, actor_kind: filters.actor_kind ?? null, entity_type: filters.entity_type ?? null, action: filters.action ?? null, outcome: filters.outcome ?? null, occurred_from: filters.occurred_from ?? null, occurred_to: filters.occurred_to ?? null })).digest('hex');
+  return createHash('sha256').update(cursorSecret).update(JSON.stringify({ tenant_id: filters.tenant_id ?? null, actor_key: filters.actor_key ?? null, actor_kind: filters.actor_kind ?? null, entity_type: filters.entity_type ?? null, action: filters.action ?? null, outcome: filters.outcome ?? null, occurred_from: filters.occurred_from ?? null, occurred_to: filters.occurred_to ?? null })).digest('hex');
 }
 export function encodeAuditCursor(cursor: AuditCursor, filters: AuditFilters): string {
   return Buffer.from(JSON.stringify({ v: 1, occurred_at: cursor.occurredAt, event_id: cursor.eventId, filter_hash: filterHash(filters) } satisfies CursorPayload), 'utf8').toString('base64url');
@@ -58,9 +62,9 @@ type AuditRouterOptions = { permissionMiddleware?: (permission: string) => Reque
 
 function parseQuery(req: Request, options: AuditRouterOptions): { filters: AuditFilters; limit: number; cursor?: string } {
   const query = req.query as Record<string, string | string[] | undefined>;
-  const allowed = new Set(['tenant_id', 'actor_kind', 'entity_type', 'action', 'outcome', 'occurred_from', 'occurred_to', 'limit', 'cursor']);
+  const allowed = new Set(['tenant_id', 'actor_key', 'actor_kind', 'entity_type', 'action', 'outcome', 'occurred_from', 'occurred_to', 'limit', 'cursor']);
   if (Object.keys(query).some((key) => !allowed.has(key)) || Object.values(query).some((value) => Array.isArray(value))) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
-  const parsed = z.object({ tenant_id: uuid.optional(), actor_kind: z.enum(actorKinds).optional(), entity_type: token.optional(), action: token.optional(), outcome: z.enum(outcomes).optional(), occurred_from: isoDate.optional(), occurred_to: isoDate.optional(), limit: z.coerce.number().int().min(1).max(100).default(25), cursor: z.string().min(1).max(2048).optional() }).strict().safeParse(query);
+  const parsed = z.object({ tenant_id: uuid.optional(), actor_key: opaqueKey.optional(), actor_kind: z.enum(actorKinds).optional(), entity_type: token.optional(), action: token.optional(), outcome: z.enum(outcomes).optional(), occurred_from: isoDate.optional(), occurred_to: isoDate.optional(), limit: z.coerce.number().int().min(1).max(100).default(25), cursor: z.string().min(1).max(2048).optional() }).strict().safeParse(query);
   if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
   const { limit, cursor, ...filters } = parsed.data;
   if ((filters.action && options.actionCodes && !options.actionCodes.includes(filters.action)) || (filters.entity_type && options.entityTypes && !options.entityTypes.includes(filters.entity_type)) || (filters.occurred_from && filters.occurred_to && new Date(filters.occurred_to).getTime() <= new Date(filters.occurred_from).getTime()) || (filters.occurred_from && new Date(filters.occurred_from).getTime() > Date.now()) || (filters.occurred_to && new Date(filters.occurred_to).getTime() > Date.now())) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
@@ -77,7 +81,7 @@ export function createOperatorAuditRouter(auditPort: AuditPort = unavailableAudi
       const { filters, limit, cursor } = parseQuery(req, options);
       const data = await auditPort.listAuditEvents({ filters, limit, cursor: cursor ? decodeAuditCursor(cursor, filters) : null, requestId: String(res.locals.requestId ?? 'unknown') });
       const parsed = z.object({ items: z.array(auditEventSchema), next_cursor: z.object({ occurredAt: isoDate, eventId: uuid }).strict().nullable() }).strict().parse(data);
-      if (parsed.items.some((item) => new Date(item.occurred_at).getTime() > Date.now()) || (parsed.next_cursor && new Date(parsed.next_cursor.occurredAt).getTime() > Date.now())) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The audit read service is unavailable.');
+      if (parsed.items.some((item) => (item.actor_kind !== 'operator' && !platformBillingActions.has(item.action)) || new Date(item.occurred_at).getTime() > Date.now()) || (parsed.next_cursor && new Date(parsed.next_cursor.occurredAt).getTime() > Date.now())) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The audit read service is unavailable.');
       res.setHeader('Cache-Control', 'no-store'); res.json(envelope({ items: parsed.items, next_cursor: parsed.next_cursor ? encodeAuditCursor(parsed.next_cursor, filters) : null }, String(res.locals.requestId ?? 'unknown')));
     } catch (error) { sendError(next, error); }
   });

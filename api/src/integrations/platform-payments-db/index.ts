@@ -56,6 +56,8 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
   async function transaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
     const client = await pool.connect();
     try {
+      const role=(await client.query<{rolsuper:boolean;rolbypassrls:boolean}>('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
+      if(!role||role.rolsuper||role.rolbypassrls)throw new AppError(503,'DEPENDENCY_UNAVAILABLE','The operator database role is invalid.');
       await client.query('BEGIN');
       // Business migration 0064 lets drezivo_app write Drezivo's payment methods only in an
       // explicit operator context; without it every create and update is refused by RLS.

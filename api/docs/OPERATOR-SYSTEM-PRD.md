@@ -21,15 +21,15 @@ The operator system must not reproduce merchant navigation such as Reservations,
 
 The operator identity is authenticated separately from a business membership. Clerk may provide identity and organization membership, while Drezivo owns authorization and audit decisions.
 
-Initial internal roles:
+Current scope (owner decision, 2026-10-15): the founder and Ryanny each use an individual
+**Superadmin** identity with the same platform permissions. The internal compatibility role is
+`platform_owner`. Specialist roles and a read-only operator tier are not enabled in this phase.
+Clerk `org:admin` or legacy `org:platform_owner` in the dedicated operator organization is required;
+ordinary organization membership is insufficient.
 
-- `platform_owner`: all approved platform operations, including operator administration.
-- `platform_operator`: tenant and operational administration within assigned permissions.
-- `support_operator`: support grants, safe tenant projections, and support activity.
-- `billing_operator`: plans, subscriptions, entitlements, and billing investigations.
-- `read_only_operator`: approved read-only projections and audit access.
-
-Role checks occur on every route. A UI restriction is never an authorization control. Sensitive actions require an explicit reason, idempotency, and an audit event.
+All server routes still check authorization. Individual identities make changes attributable;
+there is no shared Superadmin account. Sensitive actions require a reason, idempotency, and a
+durable audit event. Merchant/front-desk activity is excluded from this console.
 
 ## 4. Navigation and modules
 

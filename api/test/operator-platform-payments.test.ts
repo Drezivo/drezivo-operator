@@ -12,7 +12,7 @@ import {
 } from '../src/operator-platform-payments/index.js';
 
 const methodId = '850e8400-e29b-41d4-a716-446655440000';
-const key = 'intent-key-1234567890';
+const key = 'local-test-test-1';
 const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(32, 1)]);
 const method: PlatformPaymentMethod = {
   id: methodId, label: 'GCash', account_name: 'Drezivo', account_number: '09171234567', instructions: null,

@@ -30,8 +30,9 @@ describe('server failure logging', () => {
     expect(res.body).toEqual({ success: false, error: { code: 'DEPENDENCY_UNAVAILABLE', message: 'Business administration is temporarily unavailable.' }, request_id: 'req-1' });
     expect(log).toHaveBeenCalledTimes(1);
     const line = JSON.parse(String(log.mock.calls[0]?.[0]));
-    expect(line).toMatchObject({ request_id: 'req-1', status: 503, code: 'DEPENDENCY_UNAVAILABLE', cause: { name: 'Error', code: '28P01', message: 'password authentication failed for user "drezivo_app"' } });
+    expect(line).toMatchObject({ request_id: 'req-1', status: 503, code: 'DEPENDENCY_UNAVAILABLE', cause: { name: 'Error', code: '28P01' } });
     expect(JSON.stringify(line)).not.toContain('owner@example.com');
+    expect(JSON.stringify(line)).not.toContain('password authentication');
   });
 
   it('logs unexpected errors and stays quiet for client errors', () => {
@@ -41,8 +42,9 @@ describe('server failure logging', () => {
     handle(Object.assign(new Error('bad json'), { type: 'entity.parse.failed' }));
     expect(log).not.toHaveBeenCalled();
 
-    const res = handle(new TypeError('boom'));
+    const res = handle(new TypeError('provider token and owner@example.com'));
     expect(res.statusCode).toBe(500);
-    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ request_id: 'req-1', error: { name: 'TypeError', message: 'boom' } });
+    expect(String(log.mock.calls[0]?.[0])).not.toContain('owner@example.com');
+    expect(JSON.parse(String(log.mock.calls[0]?.[0]))).toMatchObject({ request_id: 'req-1', error: { name: 'TypeError' } });
   });
 });

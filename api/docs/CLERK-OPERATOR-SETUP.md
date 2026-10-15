@@ -1,5 +1,12 @@
 # Clerk setup for the operator system
 
+> Current phase (2026-10-15): two individual Superadmins, the founder and Ryanny.
+> Assign only the dedicated organization built-in `org:admin` role (or legacy
+> `org:platform_owner`). Member and specialist roles are denied by the API.
+> The broader role descriptions below are historical and do not grant current access.
+> This local implementation does not change Clerk accounts or organization settings.
+
+
 ## Current recommendation
 
 Use the dedicated **Drezivo-internal** Clerk application and its **Development** instance for local development. Configure the Operator API and Operator Web against that same instance. Do not use the customer business application's Clerk instance for operator sign-in or organization management.
