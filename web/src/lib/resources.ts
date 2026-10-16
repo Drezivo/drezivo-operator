@@ -5,9 +5,9 @@ export const resources = [
   { id: "businesses", label: "Businesses", group: "Customers", path: "/?view=businesses" },
   { id: "subscriptions", label: "Subscriptions", group: "Commercial", path: "/?view=subscriptions" },
   { id: "entitlements", label: "Assigned plans", group: "Commercial", path: "/?view=entitlements" },
-  { id: "operators", label: "Operator team", group: "Access and support", path: "/?view=operators" },
+  { id: "operators", label: "Operators", group: "Access and support", path: "/?view=operators" },
   { id: "grants", label: "Support access", group: "Access and support", path: "/?view=grants" },
-  { id: "support", label: "Support activity", group: "Access and support", path: "/?view=support" },
+  { id: "support", label: "Operator activity", group: "Access and support", path: "/?view=support" },
   { id: "audit", label: "Audit log", group: "Access and support", path: "/?view=audit" },
   { id: "jobs", label: "Background jobs", group: "Delivery and integrations", path: "/?view=jobs" },
   { id: "notifications", label: "Notifications", group: "Delivery and integrations", path: "/?view=notifications" },
@@ -22,7 +22,7 @@ export type ResourceId = typeof resources[number]["id"];
  * endpoints to be live, so views are enabled version by version with NEXT_PUBLIC_OPERATOR_VIEWS
  * (comma-separated ids, for example "clients,operators"). Unknown ids are ignored.
  */
-export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["clients", "payments", "payment-methods"];
+export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["overview", "analytics", "clients", "subscriptions", "entitlements", "operators", "grants", "audit", "jobs", "notifications", "payments", "payment-methods"];
 
 export function enabledResourceIds(configured: string | undefined = process.env.NEXT_PUBLIC_OPERATOR_VIEWS): ResourceId[] {
   const known = new Set<string>(resources.map((resource) => resource.id));
@@ -40,14 +40,14 @@ export const resourceHelp: Record<ResourceId, string> = {
   analytics: "Monthly platform trends and additions projected from the operator API. List-price run-rate is not cash income.",
   clients: "Every client business with its trial, payment and staff status. Lock or unlock a business, suspend staff, set a trial end or record a payment.",
   businesses: "Tenant records returned by the operator API.",
-  subscriptions: "Subscription state reported by the operator API.",
+  subscriptions: "Subscriptions, latest verified payments, responsible reviewers and upcoming due dates.",
   entitlements: "Review the plan definition currently assigned to one business. Effective capability evaluation is not available yet.",
-  audit: "Audit search is not enabled while the source, scope, and redaction rules are under review.",
+  audit: "System billing events and operator accountability, with responsible actor, target, outcome and request trace.",
   operators: "Review operator organization membership and access information.",
-  support: "Support activity is blocked until the backend contract is resolved.",
+  support: "Operator actions across the platform. Merchant and front-desk activity is excluded.",
   jobs: "Background job status and retry controls.",
   notifications: "Delivery status and retry controls.",
-  grants: "Create or revoke temporary support access. A searchable grant history is not available yet.",
-  payments: "Proofs of payment for the ₱300 Standard plan. Check the reference against the account, then approve or reject. The owner is emailed either way.",
+  grants: "Choose a business and permissions, open temporary workspace access, and revoke it when support is finished.",
+  payments: "Subscription payment proofs sent by business owners. Check the reference against the account, then approve or reject. Reviews are audited and owner notifications are queued.",
   "payment-methods": "Where businesses pay Drezivo: the GCash, Maya or bank accounts and QR codes shown in their Subscribe dialog.",
 };

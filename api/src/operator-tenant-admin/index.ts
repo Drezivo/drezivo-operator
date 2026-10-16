@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../errors.js';
@@ -34,7 +35,7 @@ export type TenantSummary = {
     plan_code: string;
     trial_ends_at: string | null;
     grace_ends_at: string | null;
-    current_period_end: string;
+    current_period_end: string | null;
   } | null;
   member_counts: { active: number; suspended: number; removed: number };
   /** A subscription payment proof is waiting for review. */
@@ -58,6 +59,7 @@ export type SubscriptionPaymentRow = {
   reviewed_by: string | null;
   review_note: string | null;
   has_proof: boolean;
+  target_plan_code?: string | null;
 };
 
 /** Operator-only note on a business (append-only; businesses never see these). */
@@ -90,7 +92,7 @@ export type TenantDetail = TenantSummary & {
   payments: SubscriptionPaymentRow[];
 };
 
-export type CommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string };
+export type CommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string; requestFingerprint?: string };
 export type CommandResult = { tenant: TenantDetail; changed: boolean; replayed: boolean };
 
 export const profileInputSchema = z.object({ name: businessName.optional(), timezone: timezone.optional(), reason }).strict()
@@ -167,7 +169,7 @@ function context(req: Request, res: Response, reasonText: string): CommandContex
   if (!key || !idempotencyKey.safeParse(key).success) throw new AppError(400, 'VALIDATION_FAILED', 'A valid idempotency key is required.');
   const subject = res.locals.operatorPrincipal?.clerkUserId;
   if (typeof subject !== 'string' || subject.length === 0) throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
-  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestId(res), reason: reasonText };
+  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestId(res), reason: reasonText, requestFingerprint: createHash('sha256').update(JSON.stringify(req.body, Object.keys(req.body as object).sort())).digest('hex') };
 }
 function futureWithin(value: string, days: number, now: Date, field: string): Date {
   const date = new Date(value);
@@ -196,7 +198,7 @@ export function createOperatorTenantAdminRouter(
   const directory = options.directory ?? emptyBusinessUserDirectory;
   const withProfiles = async (tenant: TenantDetail): Promise<TenantDetail> => {
     const profiles = await directory.lookup(tenant.members.map((member) => member.clerk_user_id));
-    return { ...tenant, members: tenant.members.map((member) => ({ ...member, profile: profiles.get(member.clerk_user_id) ?? null })) };
+    return { ...tenant, recent_audit: [], members: tenant.members.map((member) => ({ ...member, profile: profiles.get(member.clerk_user_id) ?? null })) };
   };
   const command = async (result: CommandResult) => ({ ...result, tenant: await withProfiles(result.tenant) });
   const read = permission(tenantAdminPermissions.read);

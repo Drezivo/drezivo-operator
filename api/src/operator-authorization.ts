@@ -16,11 +16,10 @@ export const rolePermissions: Readonly<Record<OperatorRole, readonly OperatorPer
     'operator.overview.read', 'business.summary.read', 'audit.read', 'operator.directory.read', 'support.activity.read',
     'subscription.read', 'entitlement.read', 'platform.analytics.read', 'job.read', 'notification.read', 'support.grant.create', 'support.grant.revoke',
     'job.retry', 'notification.retry', 'tenant.admin.read', 'tenant.admin.manage',
+    'workspace.access', 'workspace.read', 'workspace.repair',
   ],
-  platform_operator: ['operator.overview.read', 'tenant.admin.read', 'tenant.admin.manage'],
-  support_operator: ['operator.overview.read', 'tenant.admin.read'],
-  billing_operator: ['operator.overview.read', 'subscription.read', 'platform.analytics.read'],
-  read_only_operator: ['operator.overview.read'],
+  // Kept as denied legacy wire values; only Superadmin is enabled for this phase.
+  platform_operator: [], support_operator: [], billing_operator: [], read_only_operator: [],
 };
 
 export type AuthorizationPort = {
@@ -37,17 +36,10 @@ export const denyAuthorizationPort: AuthorizationPort = {
   resolveTenantScope: async () => false,
 };
 
-const clerkRoleToOperatorRole = {
-  // Built-in Clerk roles, for a Production instance without custom roles: the organization admin
-  // runs the platform, an ordinary member can only see the overview.
+const clerkRoleToOperatorRole: Partial<Record<ClerkOperatorRole, OperatorRole>> = {
   'org:admin': 'platform_owner',
-  'org:member': 'read_only_operator',
   'org:platform_owner': 'platform_owner',
-  'org:platform_operator': 'platform_operator',
-  'org:support_operator': 'support_operator',
-  'org:billing_operator': 'billing_operator',
-  'org:read_only_operator': 'read_only_operator',
-} as const satisfies Record<ClerkOperatorRole, OperatorRole>;
+};
 
 /**
  * Every operator request used to wait on a Clerk Backend API round trip to confirm membership.
@@ -111,10 +103,7 @@ export function createClerkAuthorizationPort(input: {
     resolvePermission: async ({ principal, permission }) => {
       const role = operatorRoleSchema.safeParse(principal.roles.length === 1 ? principal.roles[0] : undefined);
       if (!role.success || !rolePermissions[role.data].includes(permission)) return false;
-      return role.data === 'platform_owner' || permission === 'operator.overview.read' ||
-        (role.data === 'billing_operator' && (permission === 'subscription.read' || permission === 'platform.analytics.read')) ||
-        (role.data === 'platform_operator' && (permission === 'tenant.admin.read' || permission === 'tenant.admin.manage')) ||
-        (role.data === 'support_operator' && permission === 'tenant.admin.read');
+      return role.data === 'platform_owner';
     },
     resolveTenantScope: async ({ principal }) => principal.roles.length === 1 && principal.roles[0] === 'platform_owner',
   };
@@ -136,6 +125,10 @@ export function createConfiguredAuthorizationPort(): AuthorizationPort {
   });
 }
 
-export function createPermissionMiddleware(port: AuthorizationPort): (permission: string) => RequestHandler {
-  return (permission) => requireOperatorPermission(permission as OperatorPermission, async ({ principal, permission: normalized, request }) => port.resolvePermission({ principal, permission: normalized, request }));
+export function createPermissionMiddleware(port: AuthorizationPort, audit?: (input: { subject: string; permission: string; allowed: boolean; requestId: string }) => Promise<void>): (permission: string) => RequestHandler {
+  return (permission) => requireOperatorPermission(permission as OperatorPermission, async ({ principal, permission: normalized, request }) => {
+    const allowed = await port.resolvePermission({ principal, permission: normalized, request });
+    await audit?.({subject:principal.clerkUserId,permission:normalized,allowed:allowed===true,requestId:principal.requestId});
+    return allowed;
+  });
 }

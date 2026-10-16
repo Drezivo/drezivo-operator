@@ -39,9 +39,9 @@ describe("apiRequest", () => {
   it("sends a supplied idempotency key once with a mutation", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope({ accepted: true })), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
-    await apiRequest("/support-grants", { token: "signed-session-token", method: "POST", body: { tenant_id: "tenant_1" }, idempotencyKey: "intent-key-1234567890" });
+    await apiRequest("/support-grants", { token: "signed-session-token", method: "POST", body: { tenant_id: "tenant_1" }, idempotencyKey: "local-test-test-1" });
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("intent-key-1234567890");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("local-test-test-1");
     expect(init.method).toBe("POST");
     expect(init.body).toBe(JSON.stringify({ tenant_id: "tenant_1" }));
   });
@@ -49,7 +49,7 @@ describe("apiRequest", () => {
   it("sends the operator-provided reason for a retry without substituting copy", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope({ accepted: true })), { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
-    await apiRequest("/jobs/job_1/retry", { token: "signed-session-token", method: "POST", body: { reason: "Reviewed timeout with on-call" }, idempotencyKey: "retry-intent-1234567890" });
+    await apiRequest("/jobs/job_1/retry", { token: "signed-session-token", method: "POST", body: { reason: "Reviewed timeout with on-call" }, idempotencyKey: "retry-local-test-test-1" });
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.body).toBe(JSON.stringify({ reason: "Reviewed timeout with on-call" }));
   });

@@ -13,6 +13,7 @@ const overviewCount = z.number().int().nonnegative().safe();
 const overviewText = (max: number) => z.string().trim().min(1).max(max);
 
 export const operatorOverviewSchema = z.object({
+  verified_cash_collections: z.array(z.object({currency:z.string().regex(/^[A-Z]{3}$/),amount_minor:z.string().regex(/^[0-9]+$/),payment_count:overviewCount}).strict()).optional(),
   as_of: isoDate,
   businesses: z.object({ total: overviewCount, by_status: z.array(z.object({ status: statusSchema, count: overviewCount }).strict()).length(3).refine((items) => new Set(items.map((item) => item.status)).size === 3) }).strict(),
   subscriptions: z.object({
@@ -27,7 +28,7 @@ export const operatorOverviewSchema = z.object({
   recent_businesses: z.array(z.object({ id: uuid, name: overviewText(200), slug: overviewText(100), status: statusSchema, created_at: isoDate }).strict()).max(50),
 }).strict();
 
-const subscriptionSummarySchema = z.object({ plan_code: z.string().min(1), status: z.string().min(1), current_period_end: isoDate, cancel_at_period_end: z.boolean() }).strict();
+const subscriptionSummarySchema = z.object({ plan_code: z.string().min(1), status: z.string().min(1), current_period_end: isoDate.nullable(), cancel_at_period_end: z.boolean() }).strict();
 export const businessSummarySchema = z.object({
   tenant_id: uuid, business_name: z.string().min(1), slug: z.string().min(1), status: statusSchema,
   currency: z.string().regex(/^[A-Z]{3}$/), timezone: z.string().min(1), created_at: isoDate, updated_at: isoDate,
@@ -38,7 +39,7 @@ export const businessDetailSchema = z.object({
   currency: z.string().regex(/^[A-Z]{3}$/), timezone: z.string().min(1), created_at: isoDate, updated_at: isoDate,
   branches: z.array(z.object({ branch_id: uuid, name: z.string().min(1), code: z.string().min(1), status: z.string().min(1), timezone: z.string().min(1) }).strict()),
   membership_summary: z.object({ active_count: z.number().int().nonnegative(), invited_count: z.number().int().nonnegative(), suspended_count: z.number().int().nonnegative() }).strict(),
-  subscription: z.object({ plan_code: z.string().min(1), status: z.string().min(1), current_period_start: isoDate, current_period_end: isoDate, trial_ends_at: isoDate.nullable(), grace_ends_at: isoDate.nullable(), cancel_at_period_end: z.boolean() }).strict().nullable(),
+  subscription: z.object({ plan_code: z.string().min(1), status: z.string().min(1), current_period_start: isoDate, current_period_end: isoDate.nullable(), trial_ends_at: isoDate.nullable(), grace_ends_at: isoDate.nullable(), cancel_at_period_end: z.boolean() }).strict().nullable(),
   entitlement_summary: z.object({ capability_count: z.number().int().nonnegative(), overridden_capability_count: z.number().int().nonnegative() }).strict(),
 }).strict();
 
@@ -86,7 +87,7 @@ function parseQuery(req: Request, options: ReadRouterOptions, route: 'overview' 
   const allowed = new Set(route === 'overview' ? [] : ['cursor', 'limit', 'q', 'plan_code', 'sort', 'status']);
   if (Object.keys(query).some((key) => !allowed.has(key))) throw new AppError(400, 'VALIDATION_FAILED', 'The query is invalid.');
   const rawStatuses = query.status === undefined ? [] : Array.isArray(query.status) ? query.status : [query.status];
-  const planCodes = options.planCodes ?? ['starter', 'professional', 'business'];
+  const planCodes = options.planCodes ?? ['free', 'starter', 'standard', 'professional', 'business'];
   const result = z.object({
     cursor: z.string().min(1).max(2048).optional(), limit: z.coerce.number().int().min(1).max(100).default(25),
     q: z.string().trim().min(1).max(80).optional(), plan_code: z.string().refine((value) => planCodes.includes(value), 'Unknown plan code').optional(), sort: z.literal('created_at_desc').default('created_at_desc'),

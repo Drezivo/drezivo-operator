@@ -11,3 +11,6 @@ graphify-out/
 
 # Never commit any env file, including examples (owner rule).
 **/.env*
+
+.local/
+artifacts/

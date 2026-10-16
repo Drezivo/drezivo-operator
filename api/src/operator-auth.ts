@@ -9,6 +9,7 @@ export type SafeOperatorPrincipal = {
   operatorOrganizationId: string;
   roles: OperatorRole[];
   requestId: string;
+  sessionId?: string;
 };
 
 export type OperatorMembershipResolver = (principal: {
@@ -42,7 +43,7 @@ export async function authorizeOperator(
   }
   const membership = await membershipResolver({ clerkUserId: auth.userId, operatorOrganizationId: auth.orgId, request });
   const roles = operatorRoleSchema.array().length(1).safeParse(membership?.roles);
-  if (membership?.active !== true || !roles.success) {
+  if (membership?.active !== true || !roles.success || roles.data[0] !== 'platform_owner') {
     throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
   }
   return { clerkUserId: auth.userId, operatorOrganizationId: auth.orgId, roles: roles.data, requestId };
@@ -139,6 +140,7 @@ export function requireOperator(options: ClerkContextOptions = {}): RequestHandl
         resolveMembership,
         req,
       );
+      res.locals.operatorPrincipal.sessionId = auth.sessionId ?? undefined;
       next();
     } catch (error) {
       next(error);

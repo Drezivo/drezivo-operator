@@ -47,7 +47,7 @@ slug or ID). **Manage** opens one business, where an operator can:
 - set the last trial day, or record a payment made outside the app (for example cash),
 - correct the business name or time zone,
 - suspend or reactivate a staff member,
-- read the business's recent activity.
+- open temporary read-only or repair workspace access, with operator-attributed audit records.
 
 Every action needs a reason (stored in the audit log), disables all buttons while it is in flight, and
 reuses the same `Idempotency-Key` if it is retried, so a double click or a retry never applies twice.
@@ -61,23 +61,26 @@ Environment variables are documented above. Never commit any `.env*` file, inclu
 ### Views in this build
 
 The console shows only views whose Operator API routes and business endpoints are live. By default
-that is **Clients**, **Payments** and **Payment methods**. Enable more, as their endpoints ship, with a comma-separated list in
+that is **Overview**, **Analytics**, **Clients**, **Subscriptions**, **Assigned plans**, **Operators**,
+**Support access**, **Audit log**, **Background jobs**, **Notifications**, **Payments** and **Payment methods**.
+The matching API and business migrations must be released first. Override the list with a comma-separated value in
 `NEXT_PUBLIC_OPERATOR_VIEWS` (for example `clients,operators`); unknown names are ignored.
 
 Clients state is in the URL, so links and the Back button work: `?view=clients&filter=attention`
-(filters: `attention`, `pending`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
+(filters: `attention`, `pending`, `free`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
 `?view=clients&client=<business id>`. Layouts adapt by available width from 320px phones to 3840px
 displays; lists become cards on narrow screens and aligned columns on wide ones.
 
 ### Pilot billing
 
-There is one plan, Standard, at ₱300 a month. A business's status follows the business API's access rules:
-**Trial** or **Paid** until the end date, then **View-only** for 30 days (the storefront stays up without
+Plan prices come from the business database. Free is perpetual; Starter and Standard have paid periods.
+**Free** has no renewal due. Paid plans show **Trial** or **Paid** until the end date, then **View-only** for 30 days (the storefront stays up without
 bookings for the first 3), then **Expired**, where only Subscribe works. **Payment to review** lists
 businesses that sent a proof.
 
 - `/?view=payments` is the queue of proofs, oldest first, with recently reviewed ones one tab away.
-  Approving gives one more paid month and emails the owner. A reject reason is shown to the owner.
+  Paid renewals add one paid month; Free upgrades queue activation of the requested paid plan.
+  Both queue an owner notification through the business worker. A reject reason is shown to the owner.
   A proof opens from a link that works for 5 minutes.
 - `/?view=payment-methods` manages where businesses pay Drezivo: GCash, Maya or bank accounts with
   their QR images (PNG, JPEG or WebP, up to 512 KB). At most 10 are shown to businesses. Methods are
@@ -89,7 +92,11 @@ The console uses the `/api/v1` routes for overview, businesses, subscriptions, b
 
 The overview response includes a server-generated `as_of` snapshot time; the console does not send one as a query parameter. Its `active_support_grants` value is a count supplied by the API, which counts grants where `revoked_at IS NULL`, `starts_at <= as_of`, and `as_of < expires_at`. The browser displays the returned number and does not calculate grant status.
 
-Support grants are created through `POST /support-grants` with tenant ID, permission codes, reason, and start/end times. Grants can be revoked by entering a grant UUID returned by the API. Both controls use stable idempotency keys, pending/disabled states, and an in-flight guard. The API remains authoritative for permission and time-window validation. A grant list is not shown because no list route is documented. Support activity is intentionally not requested: the API contract is blocked while business-wire semantics are unresolved.
+Support access uses named business selection and readable permission choices. A reasoned grant
+opens one workspace in read-only or repair mode. Active grants can be resumed or revoked from
+their history row; the server rechecks operator, tenant and expiry. Repair allows encoding
+corrections and permanent deletion of unused clothing after dependency checks and confirmation.
+The Audit log shows platform billing and operator actions, excluding merchant and front-desk activity.
 
 ## Navigation and page shells
 
@@ -97,10 +104,14 @@ Regular console views use client-side navigation inside one persistent shell. Th
 
 ## Current backend readiness
 
-The API may return `403` when operator membership resolution denies the session, `503` when Clerk integration is not configured, or `503` when a read or command adapter is unavailable. These results are displayed as returned; this UI does not treat an API health check as proof that data dependencies are ready. The Analytics navigation link is visible to signed-in members of the internal organization because this console does not hold a verified permission-role view; the Operator API enforces `platform.analytics.read` and returns `403` for unauthorized roles. Support activity remains blocked by its unresolved backend contract.
+The API may return `403` when operator membership resolution denies the session, `503` when Clerk integration is not configured, or `503` when a read or command adapter is unavailable. These results are displayed as returned; this UI does not treat an API health check as proof that data dependencies are ready. The Analytics navigation link is visible to signed-in members of the internal organization because this console does not hold a verified permission-role view; the Operator API enforces `platform.analytics.read` and returns `403` for unauthorized roles. The legacy support-activity transport is not mounted; operator activity is served by the platform audit route.
 
 ## Checks
 
 - `npm test` runs Vitest and React Testing Library unit/UI tests.
 - `npm run typecheck` checks TypeScript.
 - `npm run build` creates the production Next.js build.
+
+
+See [coordinated release requirements](../api/docs/OPERATOR-CONSOLE-RELEASE.md) before
+promoting the frontend. A frontend-only deployment does not install database functions or release the API.

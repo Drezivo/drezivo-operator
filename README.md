@@ -30,3 +30,9 @@ Root checks run in every workspace: `npm run typecheck`, `npm run lint`, `npm te
 Both folders were imported with their full Git history from the former
 `Drezivo/Drezivo-Operator-API` and `Drezivo/Drezivo-Operator-Web` repositories, so `git log`
 and `git blame` still reach the original commits.
+
+## Local full console
+
+See [local Docker setup](local/README.md) for the isolated stack, two Superadmin identities,
+real database checks and local-only restrictions. The current implementation handoff is
+[MEMORY_BANK.md](MEMORY_BANK.md). Hosted service configuration and release are separate.

@@ -86,7 +86,7 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
             {showBusiness && <div><dt>Business</dt><dd>{onOpenBusiness
               ? <button type="button" className="text-button inline-link" onClick={() => onOpenBusiness(payment.tenant_id)}>{payment.tenant_name}</button>
               : payment.tenant_name}</dd></div>}
-            <div><dt>Amount</dt><dd>{formatPeso(payment.amount_minor, payment.currency)}</dd></div>
+            <div><dt>Amount</dt><dd>{formatPeso(payment.amount_minor, payment.currency)}{payment.target_plan_code && <span className="row-sub">Requested {payment.target_plan_code.charAt(0).toUpperCase()+payment.target_plan_code.slice(1)}</span>}</dd></div>
             <div><dt>Method</dt><dd>{payment.method_label ?? "—"}</dd></div>
             <div><dt>Reference</dt><dd className="mono">{payment.reference ?? "—"}</dd></div>
             <div><dt>Sent</dt><dd>{formatManila(payment.submitted_at, true)}</dd></div>
@@ -106,7 +106,7 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
           </div>
           {reviewing && <form className="row-form" onSubmit={(event) => { event.preventDefault(); void review(payment, reviewing); }}>
             <label>{reviewing === "approve" ? "What you checked" : "Reason for the owner"}
-              <span className="field-hint">{reviewing === "approve" ? "For example: reference matched in GCash. Saved in the activity log." : "The owner sees this in the app and by email."}</span>
+              <span className="field-hint">{reviewing === "approve" ? "For example: reference matched in GCash. Saved in the activity log." : "The owner sees this in the app; an email notification is queued."}</span>
               <textarea required minLength={3} maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus />
             </label>
             <span>
@@ -145,7 +145,7 @@ export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Pr
         : state.data.items.length === 0 ? <EmptyPanel title={view === "pending" ? "Nothing to review" : "No payments yet"} body={view === "pending" ? "Proofs of payment appear here when an owner sends one." : "Reviewed and waiting payments appear here."} />
           : <PaymentReviewList payments={state.data.items} token={token} showBusiness onOpenBusiness={onOpenBusiness}
             onReviewed={(result, requestId, decision) => {
-              setNotice({ message: `${decision === "approve" ? "Payment approved" : "Payment rejected"} for ${result.tenant.name}. The owner is emailed.`, requestId });
+              setNotice({ message: `${decision === "approve" ? "Payment approved" : "Payment rejected"} for ${result.tenant.name}. An owner notification is queued.`, requestId });
               void load();
             }} />}
     {state.status === "ready" && <p className="muted clients-footnote">Amounts are set by the server from the plan price · Dates in Manila time <RequestId requestId={state.requestId} /></p>}

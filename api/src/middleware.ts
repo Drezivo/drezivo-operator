@@ -43,17 +43,14 @@ export function errorHandler(error: unknown, req: Request, res: Response, _next:
   res.status(500).json(errorBody('INTERNAL_ERROR', 'The request could not be completed.', requestIdValue));
 }
 
-/**
- * Clients only ever see a generic message and the request ID; this line is how that ID is traced
- * back to the real cause (a refused database login, an untrusted certificate, a missing table).
- * Only the error's class, code and message are written: Postgres keeps row values in `detail`, and
- * connection strings never appear in these messages, so no credentials or customer data are logged.
- */
+/** Provider messages can contain SQL literals, URLs and personal data. Log codes, never raw text. */
 function logServerFailure(requestIdValue: string, error: unknown): void {
+  const safeCodes = new Set(['28P01','28000','42501','23505','23503','23514','42P01','42703','42883','08001','08006','53300','53400','57P01','57014','55P03','ECONNREFUSED','ECONNRESET','ETIMEDOUT','ENOTFOUND','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE']);
   const describe = (value: unknown) => {
-    if (!(value instanceof Error)) return { name: typeof value };
+    if (!(value instanceof Error)) return { name: 'UnknownError' };
     const code = (value as { code?: unknown }).code;
-    return { name: value.name, ...(typeof code === 'string' ? { code } : {}), message: value.message.slice(0, 300) };
+    const name = ['Error','TypeError','RangeError','SyntaxError','AggregateError'].includes(value.name) ? value.name : 'Error';
+    return { name, ...(typeof code === 'string' && safeCodes.has(code) ? { code } : {}) };
   };
   // eslint-disable-next-line no-console -- the API's one log line; Render collects stderr.
   console.error(JSON.stringify({

@@ -80,7 +80,12 @@ function operatorSubject(res: Response): string {
   return subject;
 }
 async function commandCall<T>(call: () => Promise<T>): Promise<T> {
-  try { return await call(); } catch { throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.'); }
+  try { return await call(); } catch (error) {
+    if (error instanceof AppError && error.code === 'STATE_CONFLICT') throw new AppError(409, 'STATE_CONFLICT', 'The resource state or intent has changed. Refresh and try again.');
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError(404, 'NOT_FOUND', 'The resource was not found.');
+    if (error instanceof AppError && error.code === 'VALIDATION_FAILED') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command is invalid.');
+    throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.');
+  }
 }
 function sendError(next: NextFunction, error: unknown): void {
   next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.', { cause: error }));

@@ -7,7 +7,7 @@ import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSig
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const membershipId = '650e8400-e29b-41d4-a716-446655440000';
 const paymentId = '750e8400-e29b-41d4-a716-446655440000';
-const key = 'intent-key-1234567890';
+const key = 'local-test-test-1';
 const now = new Date('2026-10-01T00:00:00Z');
 const detail: TenantDetail = {
   tenant_id: tenantId, name: 'Luna Gowns', slug: 'luna-gowns', status: 'active', timezone: 'Asia/Manila', created_at: '2026-09-20T00:00:00.000Z',

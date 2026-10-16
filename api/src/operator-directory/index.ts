@@ -18,7 +18,7 @@ export const operatorDirectoryItemSchema = z.object({
   role: operatorRoleSchema,
   status: operatorStatusSchema,
   last_activity_at: iso.nullable(),
-  assigned_tenant_count: z.number().int().nonnegative(),
+  assigned_tenant_count: z.number().int().nonnegative().nullable(),
 }).strict();
 export type OperatorDirectoryItem = z.infer<typeof operatorDirectoryItemSchema>;
 export type OperatorDirectoryFilters = { role?: typeof roles[number]; status?: typeof statuses[number] };

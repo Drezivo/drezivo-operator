@@ -1,0 +1,8 @@
+**/node_modules
+**/.env*
+**/.git
+**/.next*
+**/dist
+.local
+artifacts
+graphify-out

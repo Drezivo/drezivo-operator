@@ -11,8 +11,8 @@ const safeError = z.string().max(500).regex(/^[^\u0000-\u001f\u007f]*$/);
 const jobStatuses = ['pending', 'leased', 'succeeded', 'dead'] as const;
 const notificationStatuses = ['queued', 'provider_accepted', 'delivered', 'bounced', 'failed'] as const;
 
-export const jobSchema = z.object({ job_id: uuid, tenant_id: uuid, event_type: token, status: z.enum(jobStatuses), attempts: z.number().int().nonnegative(), max_attempts: z.number().int().positive(), available_at: iso, lease_until: iso.nullable(), completed_at: iso.nullable(), safe_last_error: safeError.nullable(), created_at: iso }).strict();
-export const notificationSchema = z.object({ delivery_id: uuid, tenant_id: uuid, outbox_id: uuid, channel: token, template_version: token, status: z.enum(notificationStatuses), provider_message_id: token.nullable(), accepted_at: iso.nullable(), delivered_at: iso.nullable() }).strict();
+export const jobSchema = z.object({ job_id: uuid, tenant_id: uuid, event_type: token, status: z.enum(jobStatuses), attempts: z.number().int().nonnegative(), max_attempts: z.number().int().positive(), available_at: iso, lease_until: iso.nullable(), completed_at: iso.nullable(), safe_last_error: safeError.nullable(), can_retry: z.boolean().optional(), created_at: iso }).strict();
+export const notificationSchema = z.object({ delivery_id: uuid, tenant_id: uuid, outbox_id: uuid, channel: token, template_version: token, status: z.enum(notificationStatuses), provider_message_id: token.nullable(), can_retry: z.boolean().optional(), accepted_at: iso.nullable(), delivered_at: iso.nullable() }).strict();
 export type Job = z.infer<typeof jobSchema>;
 export type Notification = z.infer<typeof notificationSchema>;
 export type OperationsFilters = { tenant_id?: string; status?: string; event_type?: string; channel?: string; available_from?: string; available_to?: string; accepted_from?: string; accepted_to?: string };
@@ -25,7 +25,7 @@ export const unavailableOperationsPort: OperationsPort = { listJobs: async () =>
 type Cursor = { v: 1; at: string | null; id: string; filter_hash: string };
 const hash = (filters: OperationsFilters) => createHash('sha256').update('drezivo-operator-operations-cursor-v1').update(JSON.stringify(filters)).digest('hex');
 export function encodeOperationsCursor(cursor: { availableAt: string; id: string } | { acceptedAt: string | null; deliveryId: string }, filters: OperationsFilters): string { const at = 'availableAt' in cursor ? cursor.availableAt : cursor.acceptedAt; const id = 'availableAt' in cursor ? cursor.id : cursor.deliveryId; return Buffer.from(JSON.stringify({ v: 1, at, id, filter_hash: hash(filters) } satisfies Cursor)).toString('base64url'); }
-function decodeCursor(value: string, filters: OperationsFilters, notifications = false): { availableAt: string; id: string } | { acceptedAt: string | null; deliveryId: string } { try { const p = JSON.parse(Buffer.from(value, 'base64url').toString()) as Cursor; if (p.v !== 1 || p.filter_hash !== hash(filters) || !uuid.safeParse(p.id).success || (p.at !== null && (!iso.safeParse(p.at).success || new Date(p.at).getTime() > Date.now()))) throw new Error(); return notifications ? { acceptedAt: p.at, deliveryId: p.id } : p.at === null ? (() => { throw new Error(); })() : { availableAt: p.at, id: p.id }; } catch { throw new AppError(400, 'VALIDATION_FAILED', 'The cursor is invalid.'); } }
+function decodeCursor(value: string, filters: OperationsFilters, notifications = false): { availableAt: string; id: string } | { acceptedAt: string | null; deliveryId: string } { try { const p = JSON.parse(Buffer.from(value, 'base64url').toString()) as Cursor; if (p.v !== 1 || p.filter_hash !== hash(filters) || !uuid.safeParse(p.id).success || (p.at !== null && (!iso.safeParse(p.at).success || (notifications && new Date(p.at).getTime() > Date.now())))) throw new Error(); return notifications ? { acceptedAt: p.at, deliveryId: p.id } : p.at === null ? (() => { throw new Error(); })() : { availableAt: p.at, id: p.id }; } catch { throw new AppError(400, 'VALIDATION_FAILED', 'The cursor is invalid.'); } }
 const envelope = (data: unknown, requestId: string) => ({ success: true, data, request_id: requestId });
 export type OperationsRouterOptions = { permissionMiddleware?: (permission: string) => RequestHandler };
 function parseQuery(req: Request, kind: 'jobs' | 'notifications'): { filters: OperationsFilters; limit: number; cursor?: string } {
@@ -38,8 +38,8 @@ function parseQuery(req: Request, kind: 'jobs' | 'notifications'): { filters: Op
 }
 function sendError(next: NextFunction, error: unknown): void { next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operations read service is unavailable.', { cause: error })); }
 function futureJobs(items: Job[], cursor: { availableAt: string; id: string } | null): boolean {
-  return items.some((item) => new Date(item.available_at).getTime() > Date.now())
-    || Boolean(cursor && new Date(cursor.availableAt).getTime() > Date.now());
+  return items.some((item) => new Date(item.created_at).getTime() > Date.now())
+    || Boolean(cursor && !iso.safeParse(cursor.availableAt).success);
 }
 function futureNotifications(items: Notification[], cursor: { acceptedAt: string | null; deliveryId: string } | null): boolean {
   return items.some((item) => item.accepted_at !== null && new Date(item.accepted_at).getTime() > Date.now())

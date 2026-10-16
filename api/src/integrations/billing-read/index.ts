@@ -25,7 +25,7 @@ export function createBillingReadAdapter(options: BillingReadAdapterOptions): Bi
   };
   return {
     listSubscriptions: async ({ principal, filters, limit, cursor, requestId }) => {
-      const params = new URLSearchParams({ limit: String(limit) }); if (filters.plan_code) params.set('plan_code', filters.plan_code); if (filters.status) params.set('status', filters.status); if (cursor) { params.set('cursor_current_period_end', cursor.currentPeriodEnd); params.set('cursor_tenant_id', cursor.tenantId); }
+      const params = new URLSearchParams({ limit: String(limit) }); if (filters.plan_code) params.set('plan_code', filters.plan_code); if (filters.status) params.set('status', filters.status); if (cursor) { if (cursor.currentPeriodEnd === null) throw error('DEPENDENCY_UNAVAILABLE', 'The legacy billing service does not support perpetual-plan pagination.'); params.set('cursor_current_period_end', cursor.currentPeriodEnd); params.set('cursor_tenant_id', cursor.tenantId); }
       const path = '/internal/operator/v1/subscriptions';
       const assertion = createOperatorReadAssertion({ secret: options.operatorAssertionSecret, principal, requestId, permission: 'operator.subscription.list.read', path });
       const data = await request(path, listResponse, requestId, params, assertion); if (data === null) throw error('DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.');
