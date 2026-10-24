@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorRetryRouter, type OperationsRetryCommandPort } from '../src/operator-retry/index.js';
-import { AppError } from '../src/errors.js';
+import { createOperatorRetryRouter, type OperationsRetryCommandPort } from '../src/features/operations/retry/index.js';
+import { AppError } from '../src/shared/http/errors.js';
 
 const jobId = '550e8400-e29b-41d4-a716-446655440000';
 const deliveryId = '650e8400-e29b-41d4-a716-446655440000';

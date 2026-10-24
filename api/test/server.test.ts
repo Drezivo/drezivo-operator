@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAppServer, createShutdownHandler, serverLimits } from '../src/server.js';
-import { isProcessReady, markProcessReady } from '../src/process-lifecycle.js';
+import { isProcessReady, markProcessReady } from '../src/shared/lifecycle/process-lifecycle.js';
 
 describe('server lifecycle', () => {
   afterEach(() => {

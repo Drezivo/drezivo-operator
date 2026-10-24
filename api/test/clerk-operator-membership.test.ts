@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createClerkOperatorMembershipReader } from '../src/clerk-operator-membership.js';
-import { createClerkAuthorizationPort } from '../src/operator-authorization.js';
-import type { SafeOperatorPrincipal } from '../src/operator-auth.js';
+import { createClerkOperatorMembershipReader } from '../src/shared/auth/clerk-operator-membership.js';
+import { createClerkAuthorizationPort } from '../src/shared/auth/operator-authorization.js';
+import type { SafeOperatorPrincipal } from '../src/shared/auth/operator-auth.js';
 import type { Request } from 'express';
 
 const organizationId = 'org_operator';

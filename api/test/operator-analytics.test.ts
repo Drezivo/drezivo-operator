@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import { createOperatorAnalyticsRouter, operatorAnalyticsResponse, type AnalyticsReadPort, type OperatorAnalyticsResponse } from '../src/operator-analytics/index.js';
-import { createPermissionMiddleware, denyAuthorizationPort } from '../src/operator-authorization.js';
+import { createOperatorAnalyticsRouter, operatorAnalyticsResponse, type AnalyticsReadPort, type OperatorAnalyticsResponse } from '../src/features/analytics/index.js';
+import { createPermissionMiddleware, denyAuthorizationPort } from '../src/shared/auth/operator-authorization.js';
 
 const requestId = 'analytics-request-1';
 const principal = { clerkUserId: 'operator_user', operatorOrganizationId: 'operator_org', roles: ['platform_owner' as const], requestId };

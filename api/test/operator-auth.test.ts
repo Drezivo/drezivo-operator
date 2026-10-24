@@ -1,8 +1,8 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import type { AppError } from '../src/errors.js';
-import { authorizeOperator, createBearerOnlyClerkContext, mapClerkProviderError } from '../src/operator-auth.js';
+import type { AppError } from '../src/shared/http/errors.js';
+import { authorizeOperator, createBearerOnlyClerkContext, mapClerkProviderError } from '../src/shared/auth/operator-auth.js';
 
 const expectedOrganizationId = 'org_drezivo_operations';
 const verified = { isAuthenticated: true, userId: 'user_123', orgId: expectedOrganizationId };

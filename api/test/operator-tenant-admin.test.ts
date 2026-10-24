@@ -1,8 +1,10 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../src/errors.js';
-import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSigner, type SubscriptionPaymentRow, type TenantAdminPort, type TenantDetail } from '../src/operator-tenant-admin/index.js';
+import { AppError } from '../src/shared/http/errors.js';
+import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSigner, type SubscriptionPaymentRow, type TenantAdminPort, type TenantDetail } from '../src/features/clients/administration/index.js';
+import { createSubscriptionAdministrationRouter } from '../src/features/subscriptions/administration-routes.js';
+import { createPaymentAdministrationRouter } from '../src/features/payments/routes.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const membershipId = '650e8400-e29b-41d4-a716-446655440000';
@@ -33,6 +35,8 @@ function app(p: TenantAdminPort, permission = (_name: string) => (_req: Request,
     next();
   });
   a.use('/api/v1', createOperatorTenantAdminRouter(p, (_req, _res, next) => next(), { permissionMiddleware: permission, now: () => now, directory, proofLink }));
+  a.use('/api/v1', createSubscriptionAdministrationRouter(p, (_req, _res, next) => next(), { permissionMiddleware: permission, now: () => now }));
+  a.use('/api/v1', createPaymentAdministrationRouter(p, (_req, _res, next) => next(), { permissionMiddleware: permission, proofLink }));
   a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => {
     const typed = e as { status?: number; code?: string; message?: string };
     res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } });

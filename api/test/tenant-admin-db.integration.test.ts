@@ -2,17 +2,17 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { randomUUID, randomBytes, createHmac } from 'node:crypto';
 import express from 'express';
 import request from 'supertest';
-import { requestId, errorHandler } from '../src/middleware.js';
-import { createOperatorConsoleRouter } from '../src/operator-console/index.js';
-import { createSessionWebhookRouter } from '../src/operator-console/session-webhook.js';
-import { createConsoleDbAdapter } from '../src/integrations/console-db/index.js';
+import { requestId, errorHandler } from '../src/shared/http/middleware.js';
+import { createOperatorConsoleRouter } from '../src/features/sessions/index.js';
+import { createSessionWebhookRouter } from '../src/features/sessions/webhook-routes.js';
+import { createConsoleDbAdapter } from '../src/infrastructure/db/console-ports.js';
 import { join } from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTenantAdminDbAdapter } from '../src/integrations/tenant-admin-db/index.js';
-import { createPlatformPaymentsDbAdapter } from '../src/integrations/platform-payments-db/index.js';
-import type { CommandContext } from '../src/operator-tenant-admin/index.js';
+import { createTenantAdminDbAdapter } from '../src/features/clients/repository/admin.js';
+import { createPlatformPaymentsDbAdapter } from '../src/features/payment-methods/repository/postgres.js';
+import type { CommandContext } from '../src/features/clients/administration/index.js';
 
 /**
  * Runs the operator tenant-admin adapter against the real business schema.

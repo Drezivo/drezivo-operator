@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createRateLimitMiddleware, InMemoryRateLimitStore } from '../src/rate-limit.js';
+import { createRateLimitMiddleware, InMemoryRateLimitStore } from '../src/shared/http/rate-limit.js';
 
 describe('rate limiting', () => {
   it('allows requests within the limit and rejects with a safe retry response', async () => {

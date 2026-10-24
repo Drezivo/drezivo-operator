@@ -1,7 +1,7 @@
 import http from 'node:http';
-import { app } from './app.js';
-import { config } from './config.js';
-import { markProcessDraining, markProcessReady } from './process-lifecycle.js';
+import { app } from './composition.js';
+import { config } from './config/index.js';
+import { markProcessDraining, markProcessReady } from './shared/lifecycle/process-lifecycle.js';
 
 export const serverLimits = { requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 100 } as const;
 export const shutdownDeadlineMs = 10_000;

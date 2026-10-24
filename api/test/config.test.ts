@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isDevelopmentLoopbackHttpConfiguration, resolveClerkEnvironment } from '../src/config.js';
+import { isDevelopmentLoopbackHttpConfiguration, resolveClerkEnvironment } from '../src/config/index.js';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -54,7 +54,7 @@ describe('Clerk environment configuration', () => {
     vi.stubEnv('OPERATOR_CLERK_ORGANIZATION_ID', 'org_test_only');
     vi.resetModules();
 
-    const { isClerkConfigured } = await import('../src/config.js');
+    const { isClerkConfigured } = await import('../src/config/index.js');
     expect(isClerkConfigured()).toBe(false);
   });
 });
@@ -65,7 +65,7 @@ describe('operator API bind configuration', () => {
     vi.stubEnv('OPERATOR_API_HOST', '0.0.0.0.example');
     vi.resetModules();
 
-    await expect(import('../src/config.js')).rejects.toThrow('OPERATOR_API_HOST');
+    await expect(import('../src/config/index.js')).rejects.toThrow('OPERATOR_API_HOST');
   });
 });
 
@@ -96,20 +96,38 @@ describe('internal service transport configuration', () => {
 describe('secret and database configuration rules', () => {
   it('rejects an internal service credential shorter than 32 bytes without echoing it', async () => {
     vi.stubEnv('INTERNAL_SERVICE_AUTH', 'short-secret-value');
-    await expect(import('../src/config.js')).rejects.toThrow(/INTERNAL_SERVICE_AUTH/);
+    await expect(import('../src/config/index.js')).rejects.toThrow(/INTERNAL_SERVICE_AUTH/);
     vi.resetModules();
     vi.stubEnv('INTERNAL_SERVICE_AUTH', 'x'.repeat(32));
-    await expect(import('../src/config.js')).resolves.toBeDefined();
+    await expect(import('../src/config/index.js')).resolves.toBeDefined();
   });
 
   it('requires a CA certificate for the tenant-admin database in production', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('OPERATOR_CORS_ORIGINS', 'https://operator.example.com');
     vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'postgres://drezivo_app:pw@db.example.com:6543/postgres');
-    await expect(import('../src/config.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE/);
+    await expect(import('../src/config/index.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE/);
     vi.resetModules();
     vi.stubEnv('NODE_ENV', 'development');
     vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'mysql://nope');
-    await expect(import('../src/config.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_URL/);
+    await expect(import('../src/config/index.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_URL/);
+  });
+
+  it('allows synthetic console mode only with a development database', async () => {
+    vi.stubEnv('OPERATOR_LOCAL_SYNTHETIC', 'true');
+    vi.stubEnv('NODE_ENV', 'development');
+    await expect(import('../src/config/index.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_URL/);
+    vi.resetModules();
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'postgres://drezivo_app:local@db:5432/operator_local');
+    await expect(import('../src/config/index.js')).resolves.toMatchObject({ config: { OPERATOR_LOCAL_SYNTHETIC: true } });
+    vi.resetModules();
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'postgres://drezivo_app:local@hosted.example:5432/operator_local');
+    await expect(import('../src/config/index.js')).rejects.toThrow(/OPERATOR_TENANT_ADMIN_DATABASE_URL/);
+    vi.resetModules();
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_URL', 'postgres://drezivo_app:local@db:5432/operator_local');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('OPERATOR_CORS_ORIGINS', 'https://operator.example.com');
+    vi.stubEnv('OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE', 'not-read-during-validation');
+    await expect(import('../src/config/index.js')).rejects.toThrow(/OPERATOR_LOCAL_SYNTHETIC/);
   });
 });

@@ -1,14 +1,15 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorBillingRouter, encodeSubscriptionCursor, type BillingReadPort } from '../src/operator-billing/index.js';
+import { createOperatorBillingRouter, encodeSubscriptionCursor, type BillingReadPort } from '../src/features/subscriptions/index.js';
+import { createAssignedPlansRouter } from '../src/features/assigned-plans/routes.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const iso = '2026-01-01T00:00:00Z';
 const summary = { tenant_id: tenantId, business_name: 'Shop', plan_code: 'starter' as const, status: 'active' as const, currency: 'PHP', current_period_start: iso, current_period_end: '2026-02-01T00:00:00Z', cancel_at_period_end: false };
 const detail = { tenant_id: tenantId, plan_code: 'starter' as const, capability_count: 1, overridden_capability_count: 0, capabilities: [{ capability: 'reservations', enabled: true, limit_value: null }] };
 function port(overrides: Partial<BillingReadPort> = {}): BillingReadPort { return { listSubscriptions: async () => ({ items: [summary], next_cursor: null }), getEntitlements: async () => detail, ...overrides }; }
-function app(readPort: BillingReadPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next()) { const a = express(); a.use((_req, res, next) => { res.locals.requestId = 'req'; res.locals.operatorPrincipal = { clerkUserId: 'operator_user', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); }); a.use('/api/v1', createOperatorBillingRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; return res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a; }
+function app(readPort: BillingReadPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next()) { const a = express(); a.use((_req, res, next) => { res.locals.requestId = 'req'; res.locals.operatorPrincipal = { clerkUserId: 'operator_user', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); }); a.use('/api/v1', createOperatorBillingRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use('/api/v1', createAssignedPlansRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; return res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a; }
 
 describe('operator billing read projections', () => {
   it('paginates perpetual Free subscriptions through the HTTP boundary', async () => {

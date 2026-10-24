@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../src/errors.js';
-import { createOperatorSupportActivityRouter, encodeSupportActivityCursor, type SupportActivityPort } from '../src/operator-support-activity/index.js';
+import { AppError } from '../src/shared/http/errors.js';
+import { createOperatorSupportActivityRouter, encodeSupportActivityCursor, type SupportActivityPort } from '../src/features/support-access/activity/index.js';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const grantId = '22222222-2222-4222-8222-222222222222';

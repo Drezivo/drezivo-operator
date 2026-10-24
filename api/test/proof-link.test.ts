@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createProofLinkSigner, PROOF_LINK_TTL_SECONDS, signProofLink } from '../src/proof-link.js';
+import { createProofLinkSigner, PROOF_LINK_TTL_SECONDS, signProofLink } from '../src/features/payments/proof-link.js';
 
 // Same vector as the business repository's api/src/modules/billing/__tests__/operator-proof-link.test.ts.
 // If either side changes the format, one of the two tests fails.

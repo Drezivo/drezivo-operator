@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
-import { AppError } from '../src/errors.js';
-import { errorHandler } from '../src/middleware.js';
+import { AppError } from '../src/shared/http/errors.js';
+import { errorHandler } from '../src/shared/http/middleware.js';
 
 type FakeResponse = { locals: { requestId: string }; statusCode: number; body: unknown; setHeader(): void; status(code: number): FakeResponse; json(body: unknown): FakeResponse };
 
