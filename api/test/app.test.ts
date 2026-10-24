@@ -1,7 +1,8 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { app, createApp } from '../src/app.js';
-import { createRateLimitMiddleware } from '../src/rate-limit.js';
+import { app } from '../src/composition.js';
+import { createApp } from '../src/app.js';
+import { createRateLimitMiddleware } from '../src/shared/http/rate-limit.js';
 
 describe('operator API foundation', () => {
   it('reports health with a request id', async () => {
@@ -60,7 +61,7 @@ describe('operator API foundation', () => {
     expect(badMethod.headers['access-control-allow-origin']).toBeUndefined();
   });
   it('keeps public probes unthrottled while protected routes are rate limited', async () => {
-    const isolatedApp = createApp(createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }));
+    const isolatedApp = createApp({ protectedRateLimit: createRateLimitMiddleware({ limit: 1, windowMs: 60_000 }) });
     expect((await request(isolatedApp).get('/health')).status).toBe(200);
     expect((await request(isolatedApp).get('/ready')).status).toBe(200);
     const unauthenticated = await request(isolatedApp).get('/operator/health');

@@ -153,6 +153,7 @@ export async function apiBlobRequest(path: string, options: Pick<ApiOptions, "to
 }
 
 export type Overview = {
+  verified_cash_collections?: Array<{currency:string;amount_minor:string;payment_count:number}>;
   as_of: string;
   businesses: { total: number; by_status: Array<{ status: "active" | "restricted" | "cancelled"; count: number }> };
   subscriptions: {

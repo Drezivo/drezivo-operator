@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSupportActivityReadAdapter } from '../src/integrations/support-activity/index.js';
+import { createSupportActivityReadAdapter } from '../src/features/support-access/repository/activity-internal.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const eventId = '650e8400-e29b-41d4-a716-446655440000';

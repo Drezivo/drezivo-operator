@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InternalServiceClient } from '../src/internal-service-client.js';
+import { InternalServiceClient } from '../src/infrastructure/http/internal-service-client.js';
 
 const response = (status: number, body: string, headers: Record<string, string> = {}) => new Response(body, { status, headers: { 'content-type': 'application/json', ...headers } });
 const options = (fetchImpl: typeof fetch, extra: Record<string, unknown> = {}) => ({ baseUrl: 'https://business.example/', serviceAuth: async () => 'Bearer service-token', fetchImpl, ...extra });

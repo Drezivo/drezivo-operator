@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createBillingReadAdapter } from '../src/integrations/billing-read/index.js';
-import type { SafeOperatorPrincipal } from '../src/operator-auth.js';
+import { createBillingReadAdapter } from '../src/features/subscriptions/repository/internal.js';
+import type { SafeOperatorPrincipal } from '../src/shared/auth/operator-auth.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const requestId = 'req-1';

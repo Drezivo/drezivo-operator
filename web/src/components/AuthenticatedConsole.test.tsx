@@ -172,7 +172,7 @@ describe("AuthenticatedConsole view routing", () => {
     const { rerender } = render(<AuthenticatedConsole />);
 
     const businessLink = await screen.findByRole("link", { name: "View business Acme Rentals" });
-    expect(businessLink).toHaveAttribute("href", "/?view=businesses&businessId=00000000-0000-4000-8000-000000000003");
+    expect(businessLink).toHaveAttribute("href", "/?view=clients&client=00000000-0000-4000-8000-000000000003");
     expect(screen.getByText("Active", { selector: ".status-badge" })).toBeInTheDocument();
 
     const navigation = screen.getByRole("navigation", { name: "Main navigation" });
@@ -185,8 +185,7 @@ describe("AuthenticatedConsole view routing", () => {
 
     expect(screen.getByRole("heading", { name: "Business details" })).toBeInTheDocument();
     expect(navigation.scrollTop).toBe(84);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://localhost:5080/api/v1/businesses/00000000-0000-4000-8000-000000000003");
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url])=>String(url)==="http://localhost:5080/api/v1/businesses/00000000-0000-4000-8000-000000000003")).toBe(true));
   });
 
   it("focuses each changed page heading while preserving the navigation shell and scroll position", () => {
@@ -200,7 +199,7 @@ describe("AuthenticatedConsole view routing", () => {
     mocks.query = "view=support";
     rerender(<AuthenticatedConsole />);
 
-    expect(screen.getByRole("heading", { name: "Support activity" })).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Operator activity" })).toHaveFocus();
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBe(navigation);
     expect(navigation.scrollTop).toBe(84);
 
@@ -316,4 +315,29 @@ describe("AuthenticatedConsole view routing", () => {
     expect(requestSignal?.aborted).toBe(true);
     await act(async () => { finishRequest?.(overviewEnvelope("Late response", "req_unmounted_test")); });
   });
+  it("keeps distinct jobs for the same business and offers only server-approved retries", async () => {
+    mocks.query="view=jobs";
+    const tenant="11111111-1111-4111-8111-111111111111";
+    const errors=vi.spyOn(console,"error").mockImplementation(()=>{});
+    const rows=[{job_id:"33333333-3333-4333-8333-333333333333",tenant_id:tenant,event_type:"file.object_cleanup.requested",status:"dead",attempts:3,max_attempts:3,available_at:"2026-10-01T00:00:00Z",can_retry:true},{job_id:"44444444-4444-4444-8444-444444444444",tenant_id:tenant,event_type:"media.cache.invalidate_requested",status:"dead",attempts:3,max_attempts:3,available_at:"2026-10-01T00:00:00Z",can_retry:false}];
+    vi.stubGlobal("fetch",vi.fn(async(url)=>String(url).includes("/jobs")?responseEnvelope({items:rows,next_cursor:null},"jobs-ui"):responseEnvelope({items:[{tenant_id:tenant,name:"Local Luna",slug:"local-luna"}]},"business-ui")));
+    try {
+      render(<AuthenticatedConsole/>);
+      expect(await screen.findByText("File Object Cleanup Requested")).toBeInTheDocument();
+      expect(screen.getByText("Media Cache Invalidate Requested")).toBeInTheDocument();
+      expect(screen.getAllByRole("button",{name:"Retry job"})).toHaveLength(1);
+      await waitFor(()=>expect(screen.getAllByRole("link",{name:"Local Luna"})).toHaveLength(2));
+      expect(errors.mock.calls.some(args=>args.some(arg=>String(arg).includes("same key")))).toBe(false);
+    } finally { errors.mockRestore(); }
+  });
+  it("loads assigned plans by choosing a business name", async () => {
+    mocks.query="view=entitlements";const tenant="11111111-1111-4111-8111-111111111111";
+    const fetcher=vi.fn(async(url)=>String(url).includes("/entitlements")?responseEnvelope({capabilities:[{capability:"catalogue.product.max",enabled:true,limit_value:100}]},"plan-ui"):responseEnvelope({items:[{tenant_id:tenant,name:"Local Luna",slug:"local-luna"}]},"business-ui"));vi.stubGlobal("fetch",fetcher);
+    render(<AuthenticatedConsole/>);await screen.findByRole("option",{name:/Local Luna/});
+    fireEvent.change(screen.getByRole("combobox",{name:"Business"}),{target:{value:tenant}});
+    expect(await screen.findByText("Catalogue Product Max")).toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([url])=>String(url).includes(`/businesses/${tenant}/entitlements`))).toBe(true);
+    expect(screen.queryByRole("textbox",{name:"Business ID"})).not.toBeInTheDocument();
+  });
+
 });

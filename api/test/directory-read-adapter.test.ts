@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response as ExpressResponse } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createDirectoryReadAdapter } from '../src/integrations/directory-read/index.js';
-import { createOperatorDirectoryRouter } from '../src/operator-directory/index.js';
+import { createDirectoryReadAdapter } from '../src/features/operators/repository/internal.js';
+import { createOperatorDirectoryRouter } from '../src/features/operators/index.js';
 
 const operatorId = '550e8400-e29b-41d4-a716-446655440000';
 const activity = '2026-01-01T00:00:00.000Z';

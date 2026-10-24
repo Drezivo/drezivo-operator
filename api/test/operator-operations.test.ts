@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorOperationsRouter, encodeOperationsCursor, type OperationsPort } from '../src/operator-operations/index.js';
+import { createOperatorOperationsRouter, encodeOperationsCursor, type OperationsPort } from '../src/features/operations/index.js';
 
 const tenant = '550e8400-e29b-41d4-a716-446655440000';
 const job = { job_id: tenant, tenant_id: tenant, event_type: 'invoice.created', status: 'pending' as const, attempts: 0, max_attempts: 3, available_at: '2026-01-01T00:00:00Z', lease_until: null, completed_at: null, safe_last_error: null, created_at: '2026-01-01T00:00:00Z' };

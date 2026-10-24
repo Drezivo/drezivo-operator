@@ -76,8 +76,8 @@ export function PaymentMethodsPanel({ getToken }: { getToken: () => Promise<stri
     </div>
     {notice && <p className="action-success" role="status">{notice.message}<RequestId requestId={notice.requestId} /></p>}
     {error && <StatePanel error={error} dependency="Business API" onRetry={() => setError(null)} />}
-    {editing === "new" && <MethodForm busy={busy} pending={pending === "create"} onCancel={() => setEditing(null)}
-      onSubmit={async (draft) => run("create", platformPaymentPaths.list, await bodyOf(draft, false), "Payment method added.")} />}
+    {editing === "new" && <section className="panel method-card"><MethodForm busy={busy} pending={pending === "create"} onCancel={() => setEditing(null)}
+      onSubmit={async (draft) => run("create", platformPaymentPaths.list, await bodyOf(draft, false), "Payment method added.")} /></section>}
     {items.length === 0 && editing !== "new"
       ? <EmptyPanel title="No payment methods yet" body="Add GCash, Maya or a bank account with its QR code. Businesses see them when they subscribe." />
       : <ul className="method-list" aria-label="Payment methods">{items.map((method) => <li key={method.id} className="panel method-card">
@@ -173,8 +173,8 @@ function MethodForm({ method, busy, pending, onCancel, onSubmit }: {
     <label>Name<input required maxLength={80} value={draft.label} onChange={(event) => set("label", event.target.value)} placeholder="GCash, Maya, BPI…" /></label>
     <label>Account name<input maxLength={160} value={draft.account_name} onChange={(event) => set("account_name", event.target.value)} /></label>
     <label>Account number<input maxLength={120} value={draft.account_number} onChange={(event) => set("account_number", event.target.value)} /></label>
-    <label>Steps for the business<textarea maxLength={1000} rows={2} value={draft.instructions} onChange={(event) => set("instructions", event.target.value)} /></label>
     <label>Order<span className="field-hint">Lower numbers show first</span><input type="number" min={0} max={1000} value={draft.sort_order} onChange={(event) => set("sort_order", event.target.value)} /></label>
+    <label>Steps for the business<textarea maxLength={1000} rows={2} value={draft.instructions} onChange={(event) => set("instructions", event.target.value)} /></label>
     <label>QR image<span className="field-hint">PNG, JPEG or WebP, up to 512 KB</span>
       <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
         const file = event.target.files?.[0];

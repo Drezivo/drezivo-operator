@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createSupportGrantCommandAdapter } from '../src/integrations/support-grants/index.js';
-import { createOperationsRetryAdapter } from '../src/integrations/operations-retry/index.js';
+import { createSupportGrantCommandAdapter } from '../src/features/support-access/repository/grants-internal.js';
+import { createOperationsRetryAdapter } from '../src/features/operations/repository/retry-internal.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const grantId = '650e8400-e29b-41d4-a716-446655440000';
-const key = 'intent-1234567890';
+const key = 'local-test-test-1';
 const projection = { grant_id: grantId, tenant_id: tenantId, operator_subject: 'operator-1', permission_codes: ['business.read'], starts_at: '2026-01-01T00:00:00.000Z', expires_at: '2026-01-02T00:00:00.000Z', revoked_at: null, created_at: '2026-01-01T00:00:00.000Z' };
 const retry = { command_kind: 'job.retry', resource_id: grantId, status: 'accepted', request_id: 'req-1', accepted_at: '2026-01-01T00:00:00.000Z' };
 const response = (body: unknown, status = 202) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });

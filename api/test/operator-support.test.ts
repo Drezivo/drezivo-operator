@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorSupportGrantRouter, type SupportGrantCommandPort } from '../src/operator-support/index.js';
-import { AppError } from '../src/errors.js';
+import { createOperatorSupportGrantRouter, type SupportGrantCommandPort } from '../src/features/support-access/index.js';
+import { AppError } from '../src/shared/http/errors.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const grantId = '650e8400-e29b-41d4-a716-446655440000';
@@ -10,7 +10,7 @@ const projection = { grant_id: grantId, tenant_id: tenantId, operator_subject: '
 const input = { tenant_id: tenantId, permission_codes: ['business.read'], reason: 'Investigate a reported billing issue', starts_at: '2026-01-01T00:00:00Z', expires_at: '2026-01-02T00:00:00Z' };
 function port(overrides: Partial<SupportGrantCommandPort> = {}): SupportGrantCommandPort { return { createSupportGrant: async () => projection, revokeSupportGrant: async () => ({ ...projection, revoked_at: '2026-01-01T12:00:00Z' }), ...overrides }; }
 function app(commandPort: SupportGrantCommandPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next(), withPrincipal = true) { const a = express(); a.use(express.json()); a.use((_req, res, next) => { res.locals.requestId = 'req'; if (withPrincipal) res.locals.operatorPrincipal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); }); a.use('/api/v1', createOperatorSupportGrantRouter(commandPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a; }
-const key = 'intent-key-123456';
+const key = 'local-test-test-1';
 
 describe('support grant command boundary', () => {
   it('validates input, derives the operator subject, forwards audit context, and returns a safe projection', async () => { let seen: unknown; const r = await request(app(port({ createSupportGrant: async (value) => { seen = value; return projection; } }))).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input); expect(r.status).toBe(201); expect(r.body.data).toEqual(projection); expect(seen).toEqual({ ...input, operatorSubject: 'user_operator', idempotencyKey: key, requestId: 'req' }); });
@@ -28,7 +28,7 @@ describe('support grant command boundary', () => {
     expect(uniqueResponse.status).toBe(201);
     expect(uniqueResponse.body.data.permission_codes).toEqual(['business.read']);
   });
-  it('fails closed when command service is unavailable and enforces permissions', async () => { expect((await request(app({ createSupportGrant: async () => { throw new Error('down'); }, revokeSupportGrant: async () => { throw new Error('down'); } })).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).body.error.code).toBe('DEPENDENCY_UNAVAILABLE'); const seen: string[] = []; const denied = app(port(), (name) => { seen.push(name); return (_req, _res, next) => next(Object.assign(new Error(), { status: 403, code: 'FORBIDDEN', message: 'denied' })); }); expect((await request(denied).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).status).toBe(403); expect(seen).toEqual(['support.grant.create', 'support.grant.revoke']); });
+  it('fails closed when command service is unavailable and enforces permissions', async () => { expect((await request(app({ createSupportGrant: async () => { throw new Error('down'); }, revokeSupportGrant: async () => { throw new Error('down'); } })).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).body.error.code).toBe('DEPENDENCY_UNAVAILABLE'); const seen: string[] = []; const denied = app(port(), (name) => { seen.push(name); return (_req, _res, next) => next(Object.assign(new Error(), { status: 403, code: 'FORBIDDEN', message: 'denied' })); }); expect((await request(denied).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input)).status).toBe(403); expect(seen).toEqual(['support.activity.read', 'support.grant.create', 'support.grant.revoke']); });
   it('requires the verified operator context before calling the command port', async () => { let called = false; const p = port({ createSupportGrant: async () => { called = true; return projection; } }); const response = await request(app(p, undefined, false)).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input); expect(response.status).toBe(403); expect(called).toBe(false); });
   it('redacts provider AppError details while preserving local validation errors', async () => {
     const response = await request(app(port({ createSupportGrant: async () => { throw new AppError(500, 'SQL_ERROR', 'clerk secret and SQL details'); } }))).post('/api/v1/support-grants').set('Idempotency-Key', key).send(input);

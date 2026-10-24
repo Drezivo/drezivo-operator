@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { requireOperatorPermission, type OperatorPermissionResolver } from '../src/operator-permission.js';
+import { requireOperatorPermission, type OperatorPermissionResolver } from '../src/shared/auth/operator-permission.js';
 
 const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner' as const], requestId: 'req' };
 function app(middleware: ReturnType<typeof requireOperatorPermission>, withPrincipal = true) {

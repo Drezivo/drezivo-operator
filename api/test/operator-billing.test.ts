@@ -1,16 +1,31 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorBillingRouter, encodeSubscriptionCursor, type BillingReadPort } from '../src/operator-billing/index.js';
+import { createOperatorBillingRouter, encodeSubscriptionCursor, type BillingReadPort } from '../src/features/subscriptions/index.js';
+import { createAssignedPlansRouter } from '../src/features/assigned-plans/routes.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const iso = '2026-01-01T00:00:00Z';
 const summary = { tenant_id: tenantId, business_name: 'Shop', plan_code: 'starter' as const, status: 'active' as const, currency: 'PHP', current_period_start: iso, current_period_end: '2026-02-01T00:00:00Z', cancel_at_period_end: false };
 const detail = { tenant_id: tenantId, plan_code: 'starter' as const, capability_count: 1, overridden_capability_count: 0, capabilities: [{ capability: 'reservations', enabled: true, limit_value: null }] };
 function port(overrides: Partial<BillingReadPort> = {}): BillingReadPort { return { listSubscriptions: async () => ({ items: [summary], next_cursor: null }), getEntitlements: async () => detail, ...overrides }; }
-function app(readPort: BillingReadPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next()) { const a = express(); a.use((_req, res, next) => { res.locals.requestId = 'req'; res.locals.operatorPrincipal = { clerkUserId: 'operator_user', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); }); a.use('/api/v1', createOperatorBillingRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; return res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a; }
+function app(readPort: BillingReadPort, permission = (_name: string) => (_req: Request, _res: Response, next: NextFunction) => next()) { const a = express(); a.use((_req, res, next) => { res.locals.requestId = 'req'; res.locals.operatorPrincipal = { clerkUserId: 'operator_user', operatorOrganizationId: 'org_operator', roles: ['platform_owner'], requestId: 'req' }; next(); }); a.use('/api/v1', createOperatorBillingRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use('/api/v1', createAssignedPlansRouter(readPort, (_req, _res, next) => next(), { permissionMiddleware: permission })); a.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = e as { status?: number; code?: string; message?: string }; return res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return a; }
 
 describe('operator billing read projections', () => {
+  it('paginates perpetual Free subscriptions through the HTTP boundary', async () => {
+    const cursors: unknown[] = [];
+    const service = app(port({ listSubscriptions: async ({ cursor }) => {
+      cursors.push(cursor);
+      return { items: [{ ...summary, plan_code: 'free', current_period_end: null }], next_cursor: cursor ? null : { currentPeriodEnd: null, tenantId } };
+    } }));
+    const first = await request(service).get('/api/v1/subscriptions?plan_code=free&limit=1');
+    expect(first.status).toBe(200);
+    expect(first.body.data.items[0].current_period_end).toBeNull();
+    const second = await request(service).get(`/api/v1/subscriptions?plan_code=free&limit=1&cursor=${first.body.data.next_cursor}`);
+    expect(second.status).toBe(200);
+    expect(cursors).toEqual([null, { currentPeriodEnd: null, tenantId }]);
+    expect(second.body.data.next_cursor).toBeNull();
+  });
   it('returns validated subscriptions, no-store, and routes permission', async () => { const seen: string[] = []; const r = await request(app(port(), (name) => { seen.push(name); return (_req, _res, next) => next(); })).get('/api/v1/subscriptions'); expect(r.status).toBe(200); expect(r.body.data.items[0]).toEqual(summary); expect(r.headers['cache-control']).toBe('no-store'); expect(seen).toContain('subscription.read'); });
   it('passes the request ID to both billing read methods', async () => { let listRequestId = ''; let detailRequestId = ''; const readPort = port({ listSubscriptions: async ({ requestId }) => { listRequestId = requestId; return { items: [summary], next_cursor: null }; }, getEntitlements: async ({ requestId }) => { detailRequestId = requestId; return detail; } }); await request(app(readPort)).get('/api/v1/subscriptions'); await request(app(readPort)).get(`/api/v1/businesses/${tenantId}/entitlements`); expect(listRequestId).toBe('req'); expect(detailRequestId).toBe('req'); });
   it('rejects invalid enums, unknown query keys, and cursor filter mismatch', async () => { expect((await request(app(port())).get('/api/v1/subscriptions?status=wat')).body.error.code).toBe('VALIDATION_FAILED'); expect((await request(app(port())).get('/api/v1/subscriptions?nope=x')).body.error.code).toBe('VALIDATION_FAILED'); const cursor = encodeSubscriptionCursor({ currentPeriodEnd: iso, tenantId }, { plan_code: 'starter' }); expect((await request(app(port())).get(`/api/v1/subscriptions?plan_code=business&cursor=${cursor}`)).body.error.code).toBe('VALIDATION_FAILED'); });

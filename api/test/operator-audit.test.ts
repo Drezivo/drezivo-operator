@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../src/errors.js';
-import { createOperatorAuditRouter, encodeAuditCursor, type AuditPort } from '../src/operator-audit/index.js';
+import { AppError } from '../src/shared/http/errors.js';
+import { createOperatorAuditRouter, encodeAuditCursor, type AuditPort } from '../src/features/audit-logs/index.js';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const eventId = '22222222-2222-4222-8222-222222222222';
@@ -12,6 +12,12 @@ function makePort(overrides: Partial<AuditPort> = {}): AuditPort { return { list
 function makeApp(port: AuditPort, permitted = true) { const app = express(); app.use((_req: Request, res: Response, next: NextFunction) => { res.locals.requestId = 'req_test'; next(); }); app.use('/api/v1', createOperatorAuditRouter(port, (_req, _res, next) => next(), { permissionMiddleware: () => (_req, _res, next) => permitted ? next() : next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')) })); app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => { const typed = error as { status?: number; code?: string; message?: string }; res.status(typed.status ?? 500).json({ error: { code: typed.code, message: typed.message } }); }); return app; }
 
 describe('operator audit routes', () => {
+  it.each(['subscription.free_started','subscription.free_trial_started','subscription.free_upgrade_payment_approved'])('accepts platform Free billing event %s without admitting merchant actions', async (action) => {
+    const allowed = makePort({listAuditEvents: async () => ({items:[{...event,actor_kind:'system',action,entity_type:'subscription'}],next_cursor:null})});
+    expect((await request(makeApp(allowed)).get('/api/v1/audit-events')).status).toBe(200);
+    const merchant = makePort({listAuditEvents: async () => ({items:[{...event,actor_kind:'staff',action:'catalogue.item.created',entity_type:'product'}],next_cursor:null})});
+    expect((await request(makeApp(merchant)).get('/api/v1/audit-events')).status).toBe(503);
+  });
   it('passes the request ID to the audit port', async () => { let received = ''; const auditPort = makePort({ listAuditEvents: async ({ requestId }) => { received = requestId; return { items: [], next_cursor: null }; } }); await request(makeApp(auditPort)).get('/api/v1/audit-events'); expect(received).toBe('req_test'); });
   it('returns safe validated events and no-store', async () => { const response = await request(makeApp(makePort())).get('/api/v1/audit-events?tenant_id=' + tenantId + '&outcome=succeeded'); expect(response.status).toBe(200); expect(response.body.data.items[0]).toEqual(event); expect(response.headers['cache-control']).toBe('no-store'); });
   it('enforces permission and strict filters', async () => { expect((await request(makeApp(makePort(), false)).get('/api/v1/audit-events')).body.error.code).toBe('FORBIDDEN'); expect((await request(makeApp(makePort())).get('/api/v1/audit-events?unknown=x')).body.error.code).toBe('VALIDATION_FAILED'); expect((await request(makeApp(makePort())).get('/api/v1/audit-events?outcome=maybe')).body.error.code).toBe('VALIDATION_FAILED'); expect((await request(makeApp(makePort())).get('/api/v1/audit-events?occurred_from=2026-01-02T00:00:00Z&occurred_to=2026-01-01T00:00:00Z')).body.error.code).toBe('VALIDATION_FAILED'); });

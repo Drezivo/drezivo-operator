@@ -1,5 +1,6 @@
 # Operator console go-live checklist
 
+First follow [the full console release prerequisites](OPERATOR-CONSOLE-RELEASE.md).
 Use this once, in order, to switch on client administration (Clients: businesses, people, lock/unlock,
 staff suspension, trial end, mark paid, edit). Tick each item only after checking it.
 
@@ -19,9 +20,9 @@ staff suspension, trial end, mark paid, edit). Tick each item only after checkin
 
 ## 2. Operator sign-in (Clerk, internal operator instance)
 
-- [ ] Follow `docs/CLERK-OPERATOR-SETUP.md`: Internal Operator organization, the five `org:*` roles, invite-only.
-- [ ] Assign `org:platform_owner` to the founders and `org:platform_operator` to whoever runs client
-      onboarding. `org:support_operator` can view Clients but not change anything.
+- [ ] Follow `docs/CLERK-OPERATOR-SETUP.md`: invite-only Internal Operator organization.
+- [ ] Founder and Ryanny each use an individual Superadmin account. `org:admin` or the legacy
+      `org:platform_owner` maps to internal `platform_owner`. Members and specialist roles are denied.
 - [ ] `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`, `OPERATOR_CLERK_ORGANIZATION_ID` set on the API host.
 
 ## 3. Staff names and emails (optional but recommended)
@@ -43,7 +44,7 @@ staff suspension, trial end, mark paid, edit). Tick each item only after checkin
 
 - [ ] Sign in to Operator Web as a platform owner → **Clients** lists the business with the right plan
       and trial date; **People** shows the owner (with email if step 3 is done).
-- [ ] Set the trial end one day later → the Clients detail shows the new date and its recent activity
+- [ ] Set the trial end one day later → the Clients detail shows the new date and the platform Audit log
       shows `operator.subscription.trial.set_end`. (The staff dashboard home page is still static demo
       data, so do not use it to check dates.)
 - [ ] Lock the business → the owner can still sign in but cannot change anything; unlock → changes work again.

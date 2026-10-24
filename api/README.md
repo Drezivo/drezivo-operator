@@ -14,7 +14,7 @@ This service is a control plane for the internal operator web application. The b
 - security headers and bounded JSON parsing
 - CI checks for typecheck, lint, test, and build
 
-The business system's database is Supabase PostgreSQL (business ADR 0009). This service owns no tables and ships no migrations. Most operator features call the business API; the client-administration routes (`/api/v1/tenants*`, `/api/v1/people`) read and write the business database directly under its row-level security until the business API exposes equivalent operator commands (ADR 0025, `docs/OPERATOR-CLIENT-ADMINISTRATION.md`).
+The business system's database is Supabase PostgreSQL (business ADR 0009). This service owns no tables and ships no migrations. The full console uses fixed business-owned PostgreSQL projections and commands through the least-privilege runtime role (ADRs 0025-0027). Tenant administration remains under business row-level security. Temporary workspace access is bound to the real operator and selected tenant. Legacy service bridges remain available only where explicitly configured. See `docs/OPERATOR-CONSOLE-RELEASE.md` for the required coordinated rollout.
 
 ## Local setup
 
@@ -39,6 +39,7 @@ For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process envi
 - `CONTRIBUTING.md` defines branches, commits, pull requests, and release checks.
 - `docs/OPERATOR-SYSTEM-PRD.md` defines the product scope.
 - `docs/OPERATOR-BACKEND-TRD.md` defines backend boundaries and phased delivery.
+- `docs/API-ARCHITECTURE.md` explains feature routes, controllers, services, repositories, shared infrastructure, and application composition.
 - `docs/OPERATOR-PERMISSION-BOUNDARY-DESIGN.md` defines the shared fail-closed permission seam.
 - `docs/OPERATOR-SCOPE-BOUNDARY-DESIGN.md` defines the separate tenant-scope seam.
 - `docs/INTERNAL-SERVICE-CLIENT-DESIGN.md` defines the bounded business-service transport seam.

@@ -3,7 +3,7 @@ import { AuthenticatedConsole } from "@/components/AuthenticatedConsole";
 import { BrandMark } from "@/components/BrandMark";
 
 export default function Home() {
-  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && !(process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_OPERATOR_LOCAL_MODE === "true")) {
     return (
       <main className="setup-screen">
         <div className="setup-card">
