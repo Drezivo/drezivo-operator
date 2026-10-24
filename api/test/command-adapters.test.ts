@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createSupportGrantCommandAdapter } from '../src/integrations/support-grants/index.js';
-import { createOperationsRetryAdapter } from '../src/integrations/operations-retry/index.js';
+import { createSupportGrantCommandAdapter } from '../src/features/support-access/repository/grants-internal.js';
+import { createOperationsRetryAdapter } from '../src/features/operations/repository/retry-internal.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const grantId = '650e8400-e29b-41d4-a716-446655440000';

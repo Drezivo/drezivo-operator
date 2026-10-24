@@ -1,0 +1,75 @@
+import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from "express";
+import { z } from "zod";
+import { AppError } from "../../../shared/http/errors.js";
+import { uuid, token, idempotencyKey, retryRequestSchema, retryResultSchema, unavailableOperationsRetryCommandPort } from "./contracts.js";
+import type { RetryRequest, RetryResult, OperationsRetryCommandPort } from "./contracts.js";
+const envelope = (data: RetryResult, requestId: string) => ({ success: true, data, request_id: requestId });
+type RouterOptions = { permissionMiddleware?: (permission: string) => RequestHandler };
+
+function requestId(res: Response): string { return String(res.locals.requestId ?? 'unknown'); }
+function operatorSubject(res: Response): string {
+  const subject = res.locals.operatorPrincipal?.clerkUserId;
+  if (!subject || !token.safeParse(subject).success) throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
+  return subject;
+}
+function key(req: Request): string {
+  const value = req.get('Idempotency-Key');
+  if (!value || !idempotencyKey.safeParse(value).success) throw new AppError(400, 'VALIDATION_FAILED', 'A valid idempotency key is required.');
+  return value.trim();
+}
+function body(req: Request): RetryRequest {
+  const parsed = retryRequestSchema.safeParse(req.body);
+  if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', 'The retry request is invalid.');
+  return parsed.data;
+}
+function resourceId(value: string | string[] | undefined): string {
+  const id = typeof value === 'string' ? value : '';
+  if (!uuid.safeParse(id).success) throw new AppError(400, 'VALIDATION_FAILED', 'The resource identifier is invalid.');
+  return id;
+}
+function result(value: unknown): RetryResult {
+  const parsed = retryResultSchema.safeParse(value);
+  if (!parsed.success) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service returned an invalid response.');
+  return parsed.data;
+}
+async function commandCall<T>(call: () => Promise<T>): Promise<T> {
+  try { return await call(); } catch (error) {
+    if (error instanceof AppError && error.code === 'STATE_CONFLICT') throw new AppError(409, 'STATE_CONFLICT', 'The resource state or intent has changed. Refresh and try again.');
+    if (error instanceof AppError && error.code === 'NOT_FOUND') throw new AppError(404, 'NOT_FOUND', 'The resource was not found.');
+    if (error instanceof AppError && error.code === 'VALIDATION_FAILED') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command is invalid.');
+    throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.');
+  }
+}
+function sendError(next: NextFunction, error: unknown): void {
+  next(error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business command service is unavailable.', { cause: error }));
+}
+
+/** Route factory for future mounting after the business command contract is approved. */
+
+
+import { createOperationsRetryCommandService } from './service.js';
+
+export function createOperatorRetryController(
+  commandPort: OperationsRetryCommandPort = unavailableOperationsRetryCommandPort,
+  authorize: RequestHandler = (_req, _res, next) => next(),
+  options: RouterOptions = {},
+) {
+  const service = createOperationsRetryCommandService(commandPort);
+  const permission = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'You do not have permission to access this resource.')));
+  return {
+    retryJob: async (req, res, next) => {
+    try {
+      const input = { ...body(req), jobId: resourceId(req.params.jobId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) };
+      const data = result(await commandCall(() => service.retryJob(input)));
+      res.status(202).setHeader('Cache-Control', 'no-store').json(envelope(data, requestId(res)));
+    } catch (error) { sendError(next, error); }
+  },
+    retryNotification: async (req, res, next) => {
+    try {
+      const input = { ...body(req), deliveryId: resourceId(req.params.deliveryId), operatorSubject: operatorSubject(res), idempotencyKey: key(req), requestId: requestId(res) };
+      const data = result(await commandCall(() => service.retryNotification(input)));
+      res.status(202).setHeader('Cache-Control', 'no-store').json(envelope(data, requestId(res)));
+    } catch (error) { sendError(next, error); }
+  },
+  } satisfies Record<string, RequestHandler>;
+}

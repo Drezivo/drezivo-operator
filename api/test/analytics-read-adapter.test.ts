@@ -1,7 +1,7 @@
 import { createHash, createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createAnalyticsReadAdapter } from '../src/integrations/analytics-read/index.js';
-import type { SafeOperatorPrincipal } from '../src/operator-auth.js';
+import { createAnalyticsReadAdapter } from '../src/features/analytics/repository/internal.js';
+import type { SafeOperatorPrincipal } from '../src/shared/auth/operator-auth.js';
 
 const requestId = 'analytics-request-1';
 const secret = 'operator-analytics-assertion-secret-over-32-bytes';

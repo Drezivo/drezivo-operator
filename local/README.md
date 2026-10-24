@@ -1,9 +1,9 @@
 # Local operator console
 
-This stack contains synthetic data and two local Superadmin identities: You and Ryanny.
-It never loads hosted Clerk, Resend, Supabase or storage credentials. Application containers
-have no external network. PostgreSQL migrations are read from the separate local business
-worktree. It does not deploy, push or migrate a hosted database.
+The default synthetic-sign-in mode contains synthetic data and two local Superadmin identities:
+You and Ryanny. That mode never loads hosted Clerk, Resend, Supabase or storage credentials, and
+its application containers have no external network. PostgreSQL migrations are read from the
+Drezivo business monorepo. It does not deploy, push or migrate a hosted database.
 
 From the operator repository root:
 
@@ -16,10 +16,55 @@ Open <http://localhost:3010> and select either local Superadmin identity. The AP
 <http://localhost:5080>. These ports bind only to loopback; neither database is published.
 The local sign-in choices are fixtures, not hosted accounts. Changing them changes no Clerk user.
 
-The business checkout must exist at `../Drezivo-Operator-Business-Local` with migrations 0085 and 0086.
-Use the same exact directory name or update the two read-only migration mounts in the Compose
-file. Initialization records full migration filenames and is repeatable. Credentials live only in
-ignored `.local` files and Docker secrets. Do not copy hosted environment files into this stack.
+## Clerk Development sign-in with local data
+
+Use this option when you need to test real operator membership and permissions while keeping the
+Operator Web, API, and database local. Clerk Development is hosted, so your browser and the API
+container need internet access to Clerk. The app's console records still come from the local
+PostgreSQL database; this mode does not configure a hosted database or Business API.
+
+First set up the local database as above. Create `.local/clerk-development.json` with the matching
+secret key, publishable key, and exact **Internal Operator** organization ID from the
+**Drezivo-internal → Development** Clerk instance:
+
+```json
+{
+  "secretKey": "sk_test_REPLACE_WITH_DEVELOPMENT_KEY",
+  "publishableKey": "pk_test_REPLACE_WITH_DEVELOPMENT_KEY",
+  "operatorOrganizationId": "org_REPLACE_WITH_INTERNAL_OPERATOR_ID"
+}
+```
+
+Keep this file private; `.local` is ignored by Git. The API container receives the secret key,
+while the web container receives only the publishable key. The setup script checks the Development
+key prefixes and creates that web-only configuration:
+
+```powershell
+powershell -NoProfile -File local/init-clerk.ps1
+docker compose -f compose.local.yaml -f compose.clerk-local.yaml up -d --build
+```
+
+Open <http://localhost:3010> and sign in with an account that has active membership in that exact
+Internal Operator organization. Current API access is limited to `org:admin` or
+`org:platform_owner`; `org:member` and other roles are denied. The local API connects to the local
+database as `drezivo_app`, the non-superuser role required by its row-level security checks.
+
+The Clerk-enabled and synthetic sign-in modes use the same Compose project, ports and database
+volume, so stop one before starting the other. To switch from the synthetic mode to Clerk, first
+run `docker compose -f compose.local.yaml down`. To stop Clerk mode without deleting the local
+database volume:
+
+```powershell
+docker compose -f compose.local.yaml -f compose.clerk-local.yaml down
+```
+
+Start the synthetic mode again with `docker compose -f compose.local.yaml up -d --build`. The
+synthetic mode remains fully isolated from Clerk and all other hosted services.
+
+The Drezivo business monorepo must exist at `../drezivo` with `api/src/db/migrations`. Initialization
+applies its ordered SQL migrations read-only from that checkout, records full migration filenames,
+and is repeatable. Credentials live only in ignored `.local` files and Docker secrets. Do not copy
+hosted environment files into this stack.
 
 ```powershell
 docker compose -f compose.local.yaml stop web

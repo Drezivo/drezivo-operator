@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { requireOperatorTenantScope, tenantIdFromPath, type TenantScopeResolver } from '../src/operator-scope.js';
+import { requireOperatorTenantScope, tenantIdFromPath, type TenantScopeResolver } from '../src/shared/auth/operator-scope.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const principal = { clerkUserId: 'user_operator', operatorOrganizationId: 'org_operator', roles: ['platform_owner' as const], requestId: 'req' };

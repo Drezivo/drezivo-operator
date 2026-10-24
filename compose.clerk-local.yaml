@@ -1,0 +1,32 @@
+name: drezivo-operator-local
+services:
+  api:
+    command: [node, --import, tsx, local/start-clerk-api.mjs]
+    environment:
+      NODE_ENV: development
+      PORT: 5080
+      OPERATOR_API_HOST: 0.0.0.0
+      OPERATOR_CORS_ORIGINS: http://localhost:3010,http://127.0.0.1:3010
+    secrets:
+      - credentials
+      - clerk-development
+    networks:
+      - clerk-egress
+  web:
+    command: [node, local/start-clerk-web.mjs]
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_OPERATOR_LOCAL_MODE: 'false'
+      NEXT_PUBLIC_DREZIVO_API_BASE_URL: http://localhost:5080/api/v1
+      NEXT_PUBLIC_OPERATOR_VIEWS: overview,analytics,clients,subscriptions,entitlements,operators,grants,audit,jobs,notifications,payments,payment-methods
+      NEXT_TELEMETRY_DISABLED: '1'
+      WATCHPACK_POLLING: 'true'
+    secrets:
+      - clerk-publishable
+secrets:
+  clerk-development:
+    file: .local/clerk-development.json
+  clerk-publishable:
+    file: .local/clerk-publishable.json
+networks:
+  clerk-egress: {}

@@ -39,6 +39,7 @@ For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process envi
 - `CONTRIBUTING.md` defines branches, commits, pull requests, and release checks.
 - `docs/OPERATOR-SYSTEM-PRD.md` defines the product scope.
 - `docs/OPERATOR-BACKEND-TRD.md` defines backend boundaries and phased delivery.
+- `docs/API-ARCHITECTURE.md` explains feature routes, controllers, services, repositories, shared infrastructure, and application composition.
 - `docs/OPERATOR-PERMISSION-BOUNDARY-DESIGN.md` defines the shared fail-closed permission seam.
 - `docs/OPERATOR-SCOPE-BOUNDARY-DESIGN.md` defines the separate tenant-scope seam.
 - `docs/INTERNAL-SERVICE-CLIENT-DESIGN.md` defines the bounded business-service transport seam.

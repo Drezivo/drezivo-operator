@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { AppError } from '../src/errors.js';
+import { AppError } from '../src/shared/http/errors.js';
 import {
   createOperatorPlatformPaymentsRouter,
   detectQrMime,
@@ -9,7 +9,7 @@ import {
   type PlatformPaymentMethod,
   type PlatformPaymentsPort,
   type QrImage,
-} from '../src/operator-platform-payments/index.js';
+} from '../src/features/payment-methods/index.js';
 
 const methodId = '850e8400-e29b-41d4-a716-446655440000';
 const key = 'local-test-test-1';

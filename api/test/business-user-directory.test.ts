@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBusinessUserDirectory, toProfile } from '../src/integrations/business-user-directory/index.js';
+import { createBusinessUserDirectory, toProfile } from '../src/features/clients/repository/clerk-directory.js';
 
 const user = (id: string, overrides: Record<string, unknown> = {}) => ({
   id, firstName: 'Maria', lastName: 'Santos', primaryEmailAddressId: 'em_2',

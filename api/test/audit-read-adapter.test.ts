@@ -1,8 +1,8 @@
 import express, { type NextFunction, type Request, type Response as ExpressResponse } from 'express';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
-import { createAuditReadAdapter } from '../src/integrations/audit-read/index.js';
-import { createOperatorAuditRouter } from '../src/operator-audit/index.js';
+import { createAuditReadAdapter } from '../src/features/audit-logs/repository/internal.js';
+import { createOperatorAuditRouter } from '../src/features/audit-logs/index.js';
 
 const iso = '2026-01-01T00:00:00.000Z'; const eventId = '550e8400-e29b-41d4-a716-446655440000'; const tenantId = '650e8400-e29b-41d4-a716-446655440000';
 const event = { event_id: eventId, occurred_at: iso, actor_kind: 'operator', actor_key: 'user_operator', action: 'business.read', entity_type: 'business', entity_id: tenantId, support_grant_id: null, outcome: 'succeeded', request_id: 'req-1', redacted_summary: 'Viewed business' };

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { cachedActiveMemberships } from '../src/operator-authorization.js';
-import type { ClerkOperatorMembershipResult } from '../src/clerk-operator-membership.js';
+import { cachedActiveMemberships } from '../src/shared/auth/operator-authorization.js';
+import type { ClerkOperatorMembershipResult } from '../src/shared/auth/clerk-operator-membership.js';
 
 const active: ClerkOperatorMembershipResult = { active: true, roles: ['org:platform_owner'] };
 

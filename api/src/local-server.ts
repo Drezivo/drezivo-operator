@@ -3,14 +3,15 @@ import { readFileSync } from 'node:fs';
 import { createHmac, timingSafeEqual, createHash } from 'node:crypto';
 import express, { type RequestHandler } from 'express';
 import { z } from 'zod';
+import { config } from './config/index.js';
 import { createApp } from './app.js';
-import { createConsoleDbAdapter } from './integrations/console-db/index.js';
-import { createTenantAdminDbAdapter } from './integrations/tenant-admin-db/index.js';
-import { createPlatformPaymentsDbAdapter } from './integrations/platform-payments-db/index.js';
-import { rolePermissions, authorizationContractVersion, operatorRoleSchema, type AuthorizationPort } from './operator-authorization.js';
-import { AppError } from './errors.js';
-import { errorHandler, requestId, noStore } from './middleware.js';
-import { createRateLimitMiddleware } from './rate-limit.js';
+import { createConsoleDbAdapter } from './infrastructure/db/console-ports.js';
+import { createTenantAdminDbAdapter } from './features/clients/repository/admin.js';
+import { createPlatformPaymentsDbAdapter } from './features/payment-methods/repository/postgres.js';
+import { rolePermissions, authorizationContractVersion, operatorRoleSchema, type AuthorizationPort } from './shared/auth/operator-authorization.js';
+import { AppError } from './shared/http/errors.js';
+import { errorHandler, requestId, noStore } from './shared/http/middleware.js';
+import { createRateLimitMiddleware } from './shared/http/rate-limit.js';
 if (process.env.NODE_ENV !== 'development' || process.env.CLERK_SECRET_KEY || process.env.OPERATOR_TENANT_ADMIN_DATABASE_URL || process.env.INTERNAL_SERVICE_BASE_URL)
     throw new Error('Local entrypoint refuses hosted configuration.');
 const secrets = z.object({ databasePassword: z.string(), runtimePassword: z.string().min(32), signingSecret: z.string().min(32) }).parse(JSON.parse(readFileSync('/run/secrets/credentials', 'utf8')));
@@ -79,7 +80,16 @@ app.post('/local/login', async (req, res) => {
     await ports.session.record({ subject: profile.id, sessionId: sid, event: 'started', requestId: String(res.locals.requestId) });
     res.json({ success: true, data: { token: `${body}.${sign(body)}`, profile, session_id: sid }, request_id: res.locals.requestId });
 });
-app.use(createApp(createRateLimitMiddleware(), authorization, tenant, undefined, undefined, payments, localPorts, authenticate));
+app.use(createApp({
+  protectedRateLimit: createRateLimitMiddleware(),
+  authorizationPort: authorization,
+  tenantAdminPort: tenant,
+  platformPaymentsPort: payments,
+  consolePorts: localPorts,
+  authentication: authenticate,
+  corsOrigins: config.OPERATOR_CORS_ORIGINS,
+  clerkWebhookSigningSecret: config.OPERATOR_CLERK_WEBHOOK_SIGNING_SECRET,
+}));
 app.use(errorHandler);
 const server = app.listen(5080, '0.0.0.0');
 for (const signal of ['SIGINT', 'SIGTERM'])

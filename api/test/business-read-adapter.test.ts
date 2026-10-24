@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { createBusinessReadAdapter } from '../src/integrations/business-read/index.js';
-import type { SafeOperatorPrincipal } from '../src/operator-auth.js';
+import { createBusinessReadAdapter } from '../src/features/clients/repository/internal.js';
+import type { SafeOperatorPrincipal } from '../src/shared/auth/operator-auth.js';
 
 const iso = '2026-01-01T00:00:00.000Z';
 const overview = {

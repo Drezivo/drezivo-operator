@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createOperatorDirectoryRouter, encodeOperatorDirectoryCursor, type OperatorDirectoryItem, type OperatorDirectoryPort } from '../src/operator-directory/index.js';
+import { createOperatorDirectoryRouter, encodeOperatorDirectoryCursor, type OperatorDirectoryItem, type OperatorDirectoryPort } from '../src/features/operators/index.js';
 
 const operatorId = 'op_01J00000000000000000000000';
 const item: OperatorDirectoryItem = { operator_id: operatorId, display_name: 'Operations staff', role: 'support_operator', status: 'active', last_activity_at: '2026-01-01T00:00:00Z', assigned_tenant_count: 2 };
