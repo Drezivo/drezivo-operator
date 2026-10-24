@@ -22,7 +22,7 @@ services:
     secrets: [credentials]
     volumes:
       - ./local:/workspace/local:ro
-      - ../Drezivo-Operator-Business-Local/api/src/db/migrations:/business-migrations:ro
+      - ../drezivo/api/src/db/migrations:/business-migrations:ro
     depends_on: { db: { condition: service_healthy } }
     networks: [isolated]
   api:
@@ -84,7 +84,7 @@ services:
     volumes:
       - ./api/src:/workspace/api/src:ro
       - ./api/test:/workspace/api/test:ro
-      - ../Drezivo-Operator-Business-Local/api/src/db/migrations:/business-migrations:ro
+      - ../drezivo/api/src/db/migrations:/business-migrations:ro
     depends_on: { test-db: { condition: service_healthy } }
     networks: [isolated]
   checks:
