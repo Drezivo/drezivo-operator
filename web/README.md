@@ -4,11 +4,11 @@ An internal operations interface for reviewing Drezivo platform records. It uses
 
 ## Run locally
 
-Requirements: Node.js 20.9 or newer and npm.
+Requirements: Node.js 22.9 or newer (below 25) and npm.
 
 1. Install dependencies once from the repository root with `npm ci`.
-2. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` from the Drezivo-internal Clerk application used by this console. Never put the Clerk secret key in this web repository or in a `NEXT_PUBLIC_` variable, and never commit `.env.local`.
-3. Keep `NEXT_PUBLIC_DREZIVO_API_BASE_URL` set to the operator API origin plus `/api/v1`. Production requires HTTPS; development may use plain HTTP only with a loopback host (`localhost`, `127.0.0.0/8`, or `::1`). The template points to the API's local default, `http://localhost:5080/api/v1`.
+2. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in an ignored local environment file from the Drezivo-internal Clerk application used by this console. Never put the Clerk secret key in this web repository or in a `NEXT_PUBLIC_` variable, and never commit `.env.local`.
+3. Keep `NEXT_PUBLIC_DREZIVO_API_BASE_URL` set to the operator API origin plus `/api/v1`. Production requires HTTPS; development may use plain HTTP only with a loopback host (`localhost`, `127.0.0.0/8`, or `::1`). The API's local default is `http://localhost:5080/api/v1`.
 4. Run `npm run dev` and open `http://localhost:3010`. The console reserves port 3010 so it does not take over another local app on ports 3000 or 3001.
 
 If another Drezivo Operator Web development server is already running from this same checkout,
@@ -36,7 +36,7 @@ If Clerk is not configured, the page explains which public key is missing and do
 
 ## Clients
 
-`/?view=clients` is the day-to-day screen for the first client businesses. It lists every business
+`/clients` is the day-to-day screen for the first client businesses. It lists every business
 with its account status, plan, trial or paid-until date and staff counts (search by name, storefront
 slug or ID). **Manage** opens one business, where an operator can:
 
@@ -66,9 +66,9 @@ that is **Overview**, **Analytics**, **Clients**, **Subscriptions**, **Assigned 
 The matching API and business migrations must be released first. Override the list with a comma-separated value in
 `NEXT_PUBLIC_OPERATOR_VIEWS` (for example `clients,operators`); unknown names are ignored.
 
-Clients state is in the URL, so links and the Back button work: `?view=clients&filter=attention`
-(filters: `attention`, `pending`, `free`, `trial`, `unpaid`, `locked`, `paid`, `all`), `?view=clients&tab=people`, and
-`?view=clients&client=<business id>`. Layouts adapt by available width from 320px phones to 3840px
+Clients state is in the URL, so links and the Back button work: `/clients?filter=attention`
+(filters: `attention`, `pending`, `free`, `trial`, `unpaid`, `locked`, `paid`, `all`), `/clients?tab=people`, and
+`/clients/<business id>`. Layouts adapt by available width from 320px phones to 3840px
 displays; lists become cards on narrow screens and aligned columns on wide ones.
 
 ### Pilot billing
@@ -78,11 +78,11 @@ Plan prices come from the business database. Free is perpetual; Starter and Stan
 bookings for the first 3), then **Expired**, where only Subscribe works. **Payment to review** lists
 businesses that sent a proof.
 
-- `/?view=payments` is the queue of proofs, oldest first, with recently reviewed ones one tab away.
+- `/payments` is the queue of proofs, oldest first, with recently reviewed ones one tab away.
   Paid renewals add one paid month; Free upgrades queue activation of the requested paid plan.
   Both queue an owner notification through the business worker. A reject reason is shown to the owner.
   A proof opens from a link that works for 5 minutes.
-- `/?view=payment-methods` manages where businesses pay Drezivo: GCash, Maya or bank accounts with
+- `/payment-methods` manages where businesses pay Drezivo: GCash, Maya or bank accounts with
   their QR images (PNG, JPEG or WebP, up to 512 KB). At most 10 are shown to businesses. Methods are
   turned off, never deleted.
 
@@ -115,3 +115,7 @@ The API may return `403` when operator membership resolution denies the session,
 
 See [coordinated release requirements](../api/docs/OPERATOR-CONSOLE-RELEASE.md) before
 promoting the frontend. A frontend-only deployment does not install database functions or release the API.
+
+## Architecture
+
+Pages use App Router paths and feature modules. See [Web architecture](docs/WEB-ARCHITECTURE.md) for route ownership and data flow. Old `?view=` links no longer select a view.

@@ -66,4 +66,4 @@ scroll.
   label alongside the badge.
 - Render only fields returned by the existing Operator API projection. Do not infer additional
   business data or create controls that lack an approved API and permission contract.
-- `Support activity` and `Audit log` remain explicit blocked states until their contracts are ready.
+- Use the configured availability gate for features whose dependencies are not deployed. Audit log and operator activity use the existing reviewed API projections.
