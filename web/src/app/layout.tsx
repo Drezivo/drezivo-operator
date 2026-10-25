@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { LocalOperatorProvider } from "../lib/local-auth";
+import { LocalOperatorProvider } from "@/shared/auth/local-auth";
 import { ClerkProvider } from "@clerk/nextjs";
 import localFont from "next/font/local";
 import "./globals.css";
-import { THEME_INIT_SCRIPT } from "../components/theme";
+import { THEME_INIT_SCRIPT } from "@/shared/ui/theme";
 
 // The landing page's type pair. globals.css maps --font-bodoni to --font-display and uses Jost as body.
 const display = localFont({ src: [{path:"./fonts/bodoni.woff2",weight:"400 900",style:"normal"},{path:"./fonts/bodoni-italic.woff2",weight:"400 900",style:"italic"}], variable:"--font-bodoni", display:"swap" });

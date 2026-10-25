@@ -1,5 +1,5 @@
 import { SignIn } from "@clerk/nextjs";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandMark } from "@/shared/ui/BrandMark";
 
 export default function SignInPage() {
   if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {

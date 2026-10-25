@@ -10,7 +10,7 @@ vi.mock("@clerk/nextjs", () => ({
   },
 }));
 
-import SignInPage from "./page";
+import SignInPage from "@/app/sign-in/[[...sign-in]]/page";
 
 describe("sign-in route", () => {
   beforeEach(() => {
