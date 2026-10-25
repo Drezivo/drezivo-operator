@@ -2,31 +2,13 @@
 import Link from 'next/link';
 import { operatorLabel } from '@/lib/access';
 import { formatManila } from '@/lib/clients';
+import type { SubscriptionPage } from '@/lib/api';
 import { EmptyPanel } from './StatePanels';
 import { StatusBadge } from './StatusBadge';
 import { PaginationControls } from './PaginationControls';
-type Subscription = {
-    tenant_id: string;
-    business_name: string;
-    plan_code: string;
-    status: string;
-    currency: string;
-    current_period_end: string | null;
-    trial_ends_at?: string | null;
-    grace_ends_at?: string | null;
-    amount_minor?: string;
-    paid_at?: string | null;
-    reviewed_by?: string | null;
-    payer_key?: string | null;
-    paid_amount_minor?: string | null;
-    payment_status?: string | null;
-};
 const money = (value: string | undefined | null, currency: string) => value == null ? 'Not recorded' : new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(Number(value) / 100);
 export function SubscriptionsPanel({ data, pageNumber, hasPrevious, onPrevious, onNext }: {
-    data: {
-        items: Subscription[];
-        next_cursor?: string | null;
-    };
+    data: SubscriptionPage;
     pageNumber: number;
     hasPrevious: boolean;
     onPrevious: () => void;
