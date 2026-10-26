@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { NotFoundBackButton } from "@/components/NotFoundBackButton";
+import { NotFoundBackButton } from "@/shared/ui/NotFoundBackButton";
 
 /**
  * The Drezivo 404. The same layout and copy ship in the workspace, landing site and storefronts

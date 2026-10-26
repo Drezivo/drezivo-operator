@@ -14,3 +14,9 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - Preserve the sidebar's exact scroll position across view links, business-detail links, and browser Back/Forward navigation. Keep a browser-level QA check for this behavior when changing routing or shell state.
 - A separate area such as Settings may use a different sidebar and its own item tabs. Put it in a distinct route/layout shell with an obvious link back to the operator console. Let Next.js transition between shells; do not force a document reload with `window.location` for internal routes.
 - Add Settings pages only when their behavior has an approved API and permission contract. Do not present placeholder controls as working settings.
+
+## Module boundaries
+
+- Keep App Router pages and layouts thin. Feature UI, endpoints, contracts, request logic, and commands belong in `src/features/`.
+- Put reusable transport, auth, cache, shell, and UI in `src/shared/`. Shared runtime code must not import a feature module.
+- Use path routes for page identity. Keep `NEXT_PUBLIC_OPERATOR_VIEWS` resource IDs stable; query parameters are for within-page state.

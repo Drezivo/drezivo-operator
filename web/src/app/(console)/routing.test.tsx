@@ -1,0 +1,545 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConsoleShell } from "@/shared/shell/ConsoleShell";
+import { OverviewPage } from "@/features/overview/page";
+import { AnalyticsPage } from "@/features/analytics/page";
+import { ClientsPage } from "@/features/clients/page";
+import { BusinessesPage } from "@/features/businesses/page";
+import { SubscriptionsPage } from "@/features/subscriptions/page";
+import { AssignedPlansPage } from "@/features/assigned-plans/page";
+import { AuditLogPage } from "@/features/audit-log/page";
+import { OperatorActivityPage } from "@/features/operator-activity/page";
+import { BackgroundJobsPage } from "@/features/background-jobs/page";
+import { resources } from "@/shared/navigation/resources";
+
+const mocks = vi.hoisted(() => ({
+  pathname: "/",
+  query: "",
+  push: vi.fn(),
+  auth: { isLoaded: true, isSignedIn: true, userId: "operator-user", orgId: "operator-org" as string | null, sessionId: null as string | null },
+  getToken: vi.fn().mockResolvedValue("operator-session-token"),
+  signOut: vi.fn(),
+}));
+
+vi.mock("@clerk/nextjs", () => ({
+  useAuth: () => ({ ...mocks.auth, getToken: mocks.getToken, signOut: mocks.signOut }),
+  RedirectToSignIn: () => <p>Sign-in redirect</p>,
+  OrganizationList: () => null,
+  OrganizationSwitcher: () => null,
+}));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(mocks.query),
+  usePathname: () => mocks.pathname,
+  useRouter: () => ({ push: mocks.push }),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, onClick, scroll: _scroll, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { scroll?: boolean }) => <a href={href as string} {...props} onClick={(event) => { event.preventDefault(); onClick?.(event); }}>{children}</a>,
+}));
+
+
+/** Emulate App Router retaining its layout while replacing the active page. */
+function TestConsole() {
+  const pathname = mocks.pathname;
+  const routes: Record<string, React.ReactNode> = {
+    "/": <OverviewPage />, "/analytics": <AnalyticsPage />, "/clients": <ClientsPage />,
+    "/businesses": <BusinessesPage />, "/subscriptions": <SubscriptionsPage />,
+    "/assigned-plans": <AssignedPlansPage />, "/audit-log": <AuditLogPage />,
+    "/operator-activity": <OperatorActivityPage />, "/background-jobs": <BackgroundJobsPage />,
+  };
+  const page = pathname.startsWith("/clients/") ? <ClientsPage tenantId={pathname.split("/")[2]} />
+    : pathname.startsWith("/businesses/") ? <BusinessesPage tenantId={pathname.split("/")[2]} /> : routes[pathname];
+  return <ConsoleShell><div key={pathname}>{page}</div></ConsoleShell>;
+}
+function visit(url: string) {
+  const [pathname, query = ""] = url.split("?");
+  mocks.pathname = pathname;
+  mocks.query = query;
+}
+
+function overviewEnvelope(recentBusinessName?: string, requestId = "req_overview_test") {
+  return new Response(JSON.stringify({
+    success: true,
+    request_id: requestId,
+    data: {
+      as_of: "2026-09-25T00:00:00Z",
+      businesses: { total: 0, by_status: [] },
+      subscriptions: { active: 0, trial: 0, grace: 0, past_due: 0, restricted: 0, cancelled: 0, missing: 0, lifecycle: {} },
+      attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 0 },
+      recent_businesses: recentBusinessName ? [{
+        id: "00000000-0000-4000-8000-000000000003",
+        name: recentBusinessName,
+        slug: recentBusinessName.toLowerCase().replaceAll(" ", "-"),
+        status: "active",
+        created_at: "2026-09-24T00:00:00Z",
+      }] : [],
+    },
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+function responseEnvelope(data: unknown, requestId: string) {
+  return new Response(JSON.stringify({ success: true, request_id: requestId, data }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
+function analyticsEnvelope() {
+  const months = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(2025, 8 + index, 1));
+    return { month: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`, count: 0 };
+  });
+  const weeks = Array.from({ length: 52 }, (_, index) => {
+    const monday = new Date(Date.UTC(2025, 8, 22 + index * 7));
+    const thursday = new Date(monday.getTime() + 3 * 86_400_000);
+    const year = thursday.getUTCFullYear();
+    const jan4 = new Date(Date.UTC(year, 0, 4));
+    const firstMonday = new Date(jan4.getTime() - ((jan4.getUTCDay() || 7) - 1) * 86_400_000);
+    const week = Math.floor((monday.getTime() - firstMonday.getTime()) / (7 * 86_400_000)) + 1;
+    return { week: `${year}-W${String(week).padStart(2, "0")}`, count: 0 };
+  });
+  return responseEnvelope({
+    as_of: "2026-09-25T00:00:00Z", timezone: "Asia/Manila", period: { from: "2025-08-31T16:00:00Z", to: "2026-08-31T16:00:00Z", months: 12 }, weekly_period: { from: "2025-09-21T16:00:00Z", to: "2026-09-20T16:00:00Z", weeks: 52 },
+    businesses: { total: 3 }, subscriptions: { active: 2, trialing: 1, past_due: 0, restricted: 0, cancelled: 0 }, members: { provisioned: 6 },
+    active_plan_monthly_list_price_run_rate: [], series: { new_businesses: months, memberships: months, subscription_events: [] }, weekly_series: { new_businesses: weeks, memberships: weeks, subscription_events: [] },
+    forecasts: { new_businesses: [1, 3, 6, 12].map((horizon_months) => ({ horizon_months, withheld_reason: "insufficient_history" })), memberships: [1, 3, 6, 12].map((horizon_months) => ({ horizon_months, withheld_reason: "insufficient_history" })), active_subscribers: { withheld_reason: "incomplete_history" }, monthly_list_price_run_rate: { withheld_reason: "incomplete_history" } },
+    synthetic: { businesses: { total: 0 }, subscriptions: { active: 0, trialing: 0, past_due: 0, restricted: 0, cancelled: 0 }, members: { provisioned: 0 }, series: { new_businesses: months, memberships: months, subscription_events: [] }, weekly_series: { new_businesses: weeks, memberships: weeks, subscription_events: [] }, active_plan_monthly_list_price_run_rate: [] },
+  }, "req_analytics_test");
+}
+
+beforeEach(() => {
+  // These tests cover every view; the build default enables only the views that are live.
+  process.env.NEXT_PUBLIC_OPERATOR_VIEWS = resources.map((resource) => resource.id).join(",");
+  mocks.pathname = "/";
+  mocks.query = "";
+  mocks.push.mockClear();
+  mocks.getToken.mockReset().mockResolvedValue("operator-session-token");
+  mocks.signOut.mockClear();
+  Object.assign(mocks.auth, { isLoaded: true, isSignedIn: true, userId: "operator-user", orgId: "operator-org", sessionId: null });
+  vi.stubEnv("NEXT_PUBLIC_DREZIVO_API_BASE_URL", "http://localhost:5080/api/v1");
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
+
+describe("App Router console pages", () => {
+  it.each(["loading", "signed-out", "no-organization"])("does not mount a feature for auth state %s", async (state) => {
+    if (state === "loading") mocks.auth.isLoaded = false;
+    if (state === "signed-out") mocks.auth.isSignedIn = false;
+    if (state === "no-organization") mocks.auth.orgId = null;
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+    if (state === "loading") expect(screen.getByRole("status")).toBeInTheDocument();
+    if (state === "signed-out") expect(screen.getByText("Sign-in redirect")).toBeInTheDocument();
+    if (state === "no-organization") expect(screen.getByRole("heading", { name: "Select Internal Operator" })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("loads a nested client detail directly and returns to the filtered client list", async () => {
+    const tenantId = "00000000-0000-4000-8000-000000000001";
+    mocks.pathname = "/clients/" + tenantId;
+    mocks.query = "tab=businesses&filter=trial";
+    const detail = { tenant_id: tenantId, name: "Route Business", slug: "route-business", status: "active", timezone: "Asia/Manila", created_at: "2026-10-01T00:00:00Z", subscription: null, pending_payment: false, member_counts: { active: 0, suspended: 0, removed: 0 }, notes: [], members: [], payments: [], recent_audit: [] };
+    const fetchMock = vi.fn().mockResolvedValue(responseEnvelope(detail, "client-direct"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+    expect(await screen.findByRole("heading", { name: "Route Business" })).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/tenants/" + tenantId);
+    fireEvent.click(screen.getByRole("button", { name: "All businesses" }));
+    expect(mocks.push).toHaveBeenCalledWith("/clients?tab=businesses&filter=trial", { scroll: true });
+  });
+
+  it("keeps the People tab and filters on the client list URL", async () => {
+    mocks.pathname = "/clients"; mocks.query = "filter=trial";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseEnvelope({ items: [] }, "client-list")));
+    render(<TestConsole />);
+    await screen.findByText("No businesses yet");
+    fireEvent.click(screen.getByRole("tab", { name: "People" }));
+    expect(mocks.push).toHaveBeenCalledWith("/clients?tab=people&filter=trial", { scroll: true });
+  });
+
+  it("remounts feature state when the operator organization changes", async () => {
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.fn().mockResolvedValueOnce(overviewEnvelope("Previous organization"))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<TestConsole />);
+    await screen.findByText("Previous organization");
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    mocks.auth.orgId = "another-organization";
+    rerender(<TestConsole />);
+    expect(screen.queryByText("Previous organization")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBe(navigation);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await act(async () => { finish(overviewEnvelope("Current organization")); });
+    expect(await screen.findByText("Current organization")).toBeInTheDocument();
+  });
+
+  it("audits sign-out once before ending the session on duplicate clicks", async () => {
+    mocks.auth.sessionId = "operator-session";
+    let finish!: (response: Response) => void;
+    const fetchMock = vi.fn((_url, init: RequestInit) => init?.method === "POST"
+      ? new Promise<Response>((resolve) => { finish = resolve; })
+      : Promise.resolve(overviewEnvelope()));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+    await screen.findByText(/Snapshot as of/);
+    const button = screen.getByRole("button", { name: /Sign out/ });
+    act(() => { fireEvent.click(button); fireEvent.click(button); });
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1));
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    await act(async () => { finish(responseEnvelope({ accepted: true }, "session-ended")); });
+    await waitFor(() => expect(mocks.signOut).toHaveBeenCalledTimes(1));
+  });
+
+  it.each(["/analytics", "/subscriptions", "/clients/tenant-a"])("blocks disabled route %s without requesting data", async (path) => {
+    process.env.NEXT_PUBLIC_OPERATOR_VIEWS = "overview";
+    mocks.pathname = path;
+    const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("This console view is not supported");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.getToken).not.toHaveBeenCalled();
+  });
+
+  it("ignores the removed view query parameter at the Overview URL", async () => {
+    mocks.query = "view=subscriptions";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overviewEnvelope()));
+    render(<TestConsole />);
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  });
+
+  it("uses Overview when the view parameter is missing", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(overviewEnvelope());
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TestConsole />);
+
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/overview");
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer operator-session-token");
+  });
+
+  it("requests the selected monthly analytics window with the Clerk token", async () => {
+    visit("/analytics?months=12");
+    const fetchMock = vi.fn().mockResolvedValue(analyticsEnvelope());
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+
+    expect(await screen.findByRole("heading", { name: "New businesses by week" })).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/analytics?months=12");
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer operator-session-token");
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
+  });
+
+  it("does not render the previous view data while subscriptions load", async () => {
+    let finishSubscriptions: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(overviewEnvelope())
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishSubscriptions = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(<TestConsole />);
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+
+    visit("/subscriptions");
+    rerender(<TestConsole />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
+    expect(screen.queryByText(/Snapshot as of/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_empty"));
+    });
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+  });
+
+  it("loads subscriptions after leaving the Clients view", async () => {
+    visit("/clients");
+    let finishSubscriptions: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/subscriptions")) {
+        return new Promise<Response>((resolve) => { finishSubscriptions = resolve; });
+      }
+      return Promise.resolve(responseEnvelope({ items: [], next_cursor: null }, "req_clients_loaded"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(<TestConsole />);
+    expect(await screen.findByText("No businesses yet")).toBeInTheDocument();
+    expect(await screen.findByText("req_clients_loaded")).toBeInTheDocument();
+
+    visit("/subscriptions");
+    rerender(<TestConsole />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
+    expect(screen.queryByText("No businesses yet")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/subscriptions"))).toBe(true));
+
+    await act(async () => {
+      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_after_clients"));
+    });
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+  });
+
+  it("loads subscriptions directly and follows the returned page cursor", async () => {
+    visit("/subscriptions");
+    const subscription = {
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      business_name: "First Subscription Business",
+      plan_code: "starter",
+      status: "active",
+      currency: "PHP",
+      current_period_end: "2026-11-01T00:00:00.000Z",
+      amount_minor: "10000",
+      paid_at: null,
+      reviewed_by: null,
+      payer_key: null,
+      paid_amount_minor: null,
+      payment_status: null,
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(responseEnvelope({ items: [subscription], next_cursor: "next / cursor" }, "req_subscriptions_page1"))
+      .mockResolvedValueOnce(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_page2"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TestConsole />);
+
+    expect(await screen.findByText("First Subscription Business")).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25&cursor=next%20%2F%20cursor");
+  });
+
+  it("shows an API error instead of crashing on a malformed subscriptions payload", async () => {
+    visit("/subscriptions");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseEnvelope({ next_cursor: null }, "req_subscriptions_invalid")));
+
+    render(<TestConsole />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Operator API returned invalid subscriptions data.");
+  });
+
+  it("shows a recoverable session error and does not fetch when Clerk returns no token", async () => {
+    mocks.getToken.mockResolvedValueOnce(null);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TestConsole />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Your session needs attention");
+    expect(screen.getByText("Sign in again to continue. No data was loaded for this request.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Try again/ })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("offers phone tabs for the first views and a Menu tab that opens the navigation drawer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overviewEnvelope()));
+    render(<TestConsole />);
+
+    const tabs = screen.getByRole("navigation", { name: "Quick navigation" });
+    expect(within(tabs).getAllByRole("link").length).toBeLessThanOrEqual(4);
+    const menu = within(tabs).getByRole("button", { name: "Menu" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(menu);
+    expect(menu).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Open navigation" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("shows a clearable no-match state when navigation search finds no view", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(overviewEnvelope()));
+    render(<TestConsole />);
+
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter navigation" }), { target: { value: "no such view" } });
+
+    expect(screen.getByRole("status")).toHaveTextContent("No views match “no such view”.");
+    fireEvent.click(screen.getByRole("button", { name: "Clear navigation filter" }));
+    // The phone tab bar also links to Overview; this test is about the sidebar navigation.
+    expect(within(screen.getByRole("navigation", { name: "Main navigation" })).getByRole("link", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByText(/No views match/)).not.toBeInTheDocument();
+  });
+
+  it("links recent overview businesses to the existing business detail view", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(overviewEnvelope("Acme Rentals"))
+      .mockResolvedValueOnce(responseEnvelope({ items: [{ id: "00000000-0000-4000-8000-000000000003", name: "Acme Rentals" }] }, "req_business_details"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(<TestConsole />);
+
+    const businessLink = await screen.findByRole("link", { name: "View business Acme Rentals" });
+    expect(businessLink).toHaveAttribute("href", "/clients/00000000-0000-4000-8000-000000000003");
+    expect(screen.getByText("Active", { selector: ".status-badge" })).toBeInTheDocument();
+
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    navigation.scrollTop = 84;
+    fireEvent.scroll(navigation);
+    fireEvent.click(businessLink);
+    navigation.scrollTop = 0;
+    visit("/businesses/00000000-0000-4000-8000-000000000003");
+    rerender(<TestConsole />);
+
+    expect(screen.getByRole("heading", { name: "Business details" })).toBeInTheDocument();
+    expect(navigation.scrollTop).toBe(84);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url])=>String(url)==="http://localhost:5080/api/v1/businesses/00000000-0000-4000-8000-000000000003")).toBe(true));
+  });
+
+  it("focuses each changed page heading while preserving the navigation shell and scroll position", () => {
+    visit("/audit-log");
+    vi.stubGlobal("fetch", vi.fn());
+    const { rerender } = render(<TestConsole />);
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    navigation.scrollTop = 84;
+    fireEvent.scroll(navigation);
+
+    visit("/operator-activity");
+    rerender(<TestConsole />);
+
+    expect(screen.getByRole("heading", { name: "Operator activity" })).toHaveFocus();
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBe(navigation);
+    expect(navigation.scrollTop).toBe(84);
+
+    // A second URL change models browser Back/Forward updating useSearchParams.
+    visit("/audit-log");
+    rerender(<TestConsole />);
+
+    expect(screen.getByRole("heading", { name: "Audit log" })).toHaveFocus();
+    expect(screen.getByRole("navigation", { name: "Main navigation" })).toBe(navigation);
+    expect(navigation.scrollTop).toBe(84);
+  });
+
+  it("disables refresh while pending and ignores a double click before React rerenders", async () => {
+    let finishRefresh: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(overviewEnvelope())
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishRefresh = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TestConsole />);
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+
+    const refreshButton = screen.getByRole("button", { name: "Refresh data" });
+    act(() => {
+      fireEvent.click(refreshButton);
+      fireEvent.click(refreshButton);
+    });
+
+    const pendingButton = screen.getByRole("button", { name: "Refreshing data" });
+    expect(pendingButton).toBeDisabled();
+    expect(pendingButton).toHaveAttribute("aria-busy", "true");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => { finishRefresh?.(overviewEnvelope()); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh data" })).toBeEnabled());
+  });
+
+  it("does not let a refresh response from a previous view overwrite the selected view", async () => {
+    let finishOldRefresh: ((response: Response) => void) | undefined;
+    let oldRefreshSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(overviewEnvelope())
+      .mockImplementationOnce((_url: string | URL | Request, init?: RequestInit) => {
+        oldRefreshSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((resolve) => { finishOldRefresh = resolve; });
+      })
+      .mockResolvedValueOnce(responseEnvelope({
+        items: [{ tenant_id: "00000000-0000-4000-8000-000000000001", business_name: "Newest business" }],
+        next_cursor: null,
+      }, "req_business_test"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(<TestConsole />);
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh data" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    visit("/businesses");
+    rerender(<TestConsole />);
+    expect(oldRefreshSignal?.aborted).toBe(true);
+    expect(await screen.findByText("Newest business")).toBeInTheDocument();
+
+    const staleOverview = {
+      as_of: "2026-09-25T00:00:00Z",
+      businesses: { total: 1, by_status: [{ status: "active", count: 1 }, { status: "restricted", count: 0 }, { status: "cancelled", count: 0 }] },
+      subscriptions: { active: 0, trial: 0, grace: 0, past_due: 0, restricted: 0, cancelled: 0, missing: 0, lifecycle: { expired_trials: 0, expired_grace: 0, incomplete_trials: 0, incomplete_grace: 0 } },
+      attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 0 },
+      recent_businesses: [{ id: "00000000-0000-4000-8000-000000000002", name: "Stale overview", slug: "stale", status: "active", created_at: "2026-09-24T00:00:00Z" }],
+    };
+    await act(async () => { finishOldRefresh?.(responseEnvelope(staleOverview, "req_stale_test")); });
+
+    expect(screen.getByRole("heading", { name: "Businesses" })).toBeInTheDocument();
+    expect(screen.getByText("Newest business")).toBeInTheDocument();
+    expect(screen.queryByText("Stale overview")).not.toBeInTheDocument();
+  });
+
+  it("lets the newest same-view refresh win even when the aborted request resolves last", async () => {
+    let finishInitialRequest: ((response: Response) => void) | undefined;
+    let initialSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce((_url: string | URL | Request, init?: RequestInit) => {
+        initialSignal = init?.signal as AbortSignal | undefined;
+        return new Promise<Response>((resolve) => { finishInitialRequest = resolve; });
+      })
+      .mockResolvedValueOnce(overviewEnvelope("Newest response", "req_newer_test"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<TestConsole />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Refresh data" }));
+    expect(initialSignal?.aborted).toBe(true);
+    expect(await screen.findByText("Newest response")).toBeInTheDocument();
+
+    await act(async () => { finishInitialRequest?.(overviewEnvelope("Older response", "req_older_test")); });
+
+    expect(screen.getByText("Newest response")).toBeInTheDocument();
+    expect(screen.queryByText("Older response")).not.toBeInTheDocument();
+  });
+
+  it("aborts the active view request on unmount", async () => {
+    let finishRequest: ((response: Response) => void) | undefined;
+    let requestSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn().mockImplementation((_url: string | URL | Request, init?: RequestInit) => {
+      requestSignal = init?.signal as AbortSignal | undefined;
+      return new Promise<Response>((resolve) => { finishRequest = resolve; });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { unmount } = render(<TestConsole />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    unmount();
+
+    expect(requestSignal?.aborted).toBe(true);
+    await act(async () => { finishRequest?.(overviewEnvelope("Late response", "req_unmounted_test")); });
+  });
+  it("keeps distinct jobs for the same business and offers only server-approved retries", async () => {
+    visit("/background-jobs");
+    const tenant="11111111-1111-4111-8111-111111111111";
+    const errors=vi.spyOn(console,"error").mockImplementation(()=>{});
+    const rows=[{job_id:"33333333-3333-4333-8333-333333333333",tenant_id:tenant,event_type:"file.object_cleanup.requested",status:"dead",attempts:3,max_attempts:3,available_at:"2026-10-01T00:00:00Z",can_retry:true},{job_id:"44444444-4444-4444-8444-444444444444",tenant_id:tenant,event_type:"media.cache.invalidate_requested",status:"dead",attempts:3,max_attempts:3,available_at:"2026-10-01T00:00:00Z",can_retry:false}];
+    vi.stubGlobal("fetch",vi.fn(async(url)=>String(url).includes("/jobs")?responseEnvelope({items:rows,next_cursor:null},"jobs-ui"):responseEnvelope({items:[{tenant_id:tenant,name:"Local Luna",slug:"local-luna"}]},"business-ui")));
+    try {
+      render(<TestConsole/>);
+      expect(await screen.findByText("File Object Cleanup Requested")).toBeInTheDocument();
+      expect(screen.getByText("Media Cache Invalidate Requested")).toBeInTheDocument();
+      expect(screen.getAllByRole("button",{name:"Retry job"})).toHaveLength(1);
+      await waitFor(()=>expect(screen.getAllByRole("link",{name:"Local Luna"})).toHaveLength(2));
+      expect(errors.mock.calls.some(args=>args.some(arg=>String(arg).includes("same key")))).toBe(false);
+    } finally { errors.mockRestore(); }
+  });
+  it("loads assigned plans by choosing a business name", async () => {
+    visit("/assigned-plans");const tenant="11111111-1111-4111-8111-111111111111";
+    const fetcher=vi.fn(async(url)=>String(url).includes("/entitlements")?responseEnvelope({capabilities:[{capability:"catalogue.product.max",enabled:true,limit_value:100}]},"plan-ui"):responseEnvelope({items:[{tenant_id:tenant,name:"Local Luna",slug:"local-luna"}]},"business-ui"));vi.stubGlobal("fetch",fetcher);
+    render(<TestConsole/>);await screen.findByRole("option",{name:/Local Luna/});
+    fireEvent.change(screen.getByRole("combobox",{name:"Business"}),{target:{value:tenant}});
+    expect(await screen.findByText("Catalogue Product Max")).toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([url])=>String(url).includes(`/businesses/${tenant}/entitlements`))).toBe(true);
+    expect(screen.queryByRole("textbox",{name:"Business ID"})).not.toBeInTheDocument();
+  });
+
+});
