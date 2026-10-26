@@ -39,11 +39,11 @@ describe("apiRequest", () => {
   it("sends a supplied idempotency key once with a mutation", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope({ accepted: true })), { status: 201 }));
     vi.stubGlobal("fetch", fetchMock);
-    await apiRequest("/support-grants", { token: "signed-session-token", method: "POST", body: { tenant_id: "tenant_1" }, idempotencyKey: "local-test-test-1" });
+    await apiRequest("/test-mutation", { token: "signed-session-token", method: "POST", body: { intent: "test" }, idempotencyKey: "local-test-test-1" });
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(new Headers(init.headers).get("Idempotency-Key")).toBe("local-test-test-1");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe(JSON.stringify({ tenant_id: "tenant_1" }));
+    expect(init.body).toBe(JSON.stringify({ intent: "test" }));
   });
 
   it("sends the operator-provided reason for a retry without substituting copy", async () => {

@@ -22,7 +22,7 @@ durable dependency setup.
 
 The route requires verified active membership in the dedicated operator organization and the exact
 `platform.analytics.read` permission. Only the existing `platform_owner` and `billing_operator` roles
-receive that permission. Other roles do not gain access through overview, billing, or support grants.
+receive that permission. Other roles do not gain access through overview or billing routes.
 
 This is a platform-wide aggregate route. It accepts no tenant, business, currency, or other scope
 selector. Strict query parsing rejects unknown keys, including attempts to add a tenant scope. The

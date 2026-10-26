@@ -48,7 +48,7 @@ Messages are generic. Provider details, tokens, roles, scope records, and princi
 
 ## Authority and scope
 
-The resolver is an integration seam. It must use the approved Drezivo operator membership and permission source, not browser claims or a Clerk profile field. Tenant scope and support-grant scope remain separate checks. A permission alone must not grant access to an arbitrary tenant, and business commands must recheck scope inside their authoritative transaction.
+The resolver is an integration seam. It must use the approved Drezivo operator membership and permission source, not browser claims or a Clerk profile field. Tenant scope is resolved separately from an operator permission. A permission alone must not grant access to an arbitrary tenant, and business commands must recheck scope inside their authoritative transaction. Support-grant scope is retired by ADR 0028 and is not accepted by current operator routes.
 
 The default resolver denies access. The application must inject a real resolver only after its source, cache rules, freshness policy, failure behavior, and audit requirements have been approved. This change deliberately does not mount a resolver or add direct Neon access.
 

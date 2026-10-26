@@ -3,6 +3,8 @@
 **Status:** Draft for backend foundation review  
 **Audience:** Drezivo founders, operators, support, billing, and engineering teams
 
+> **Current direction (2026-10-26):** Operator support-grant, support-activity, and workspace-administration features are retired by [ADR 0028](adr/0028-retire-operator-support-access.md). The requirements below are historical where they describe those features. Existing tenant administration commands, including trial management, remain behind `tenant.admin.manage`. Direct workspace inspection, repair, or deletion requires explicit business permission and is not available through Operator.
+
 ## 1. Purpose
 
 The internal operator system gives Drezivo staff a controlled way to understand platform health, assist businesses, and manage platform configuration. It is a separate surface from the merchant application and public website. It must make operator actions traceable, limited in scope, and reversible where practical.
@@ -13,9 +15,9 @@ This system is for platform operations. It is not a second merchant application 
 
 - **Public website:** marketing and public storefront experiences.
 - **Business application:** rental owners and front desk staff manage branches, inventory, reservations, customers, payments, and calendars.
-- **Operator system:** founders, support, billing, and platform operators manage tenant lifecycle, entitlements, support grants, jobs, notifications, and platform health.
+- **Operator system:** founders, billing, and platform operators manage tenant lifecycle, entitlements, jobs, notifications, and platform health.
 
-The operator system must not reproduce merchant navigation such as Reservations, Clothing, Customers, Calendar, or Payments. A support operator reaches a tenant only through an approved, time-bound support grant and the smallest permitted view.
+The operator system must not reproduce merchant navigation such as Reservations, Clothing, Customers, Calendar, or Payments. Business-side changes require the business's permission and must use separately authorized business workflows.
 
 ## 3. Users and roles
 
@@ -40,9 +42,6 @@ durable audit event. Merchant/front-desk activity is excluded from this console.
   - All Businesses
 - Subscriptions
 - Entitlements
-- Support
-  - Access Grants
-  - Support Activity
 - Admin Team
 - Audit Log
 - Operations
@@ -52,11 +51,11 @@ durable audit event. Merchant/front-desk activity is excluded from this console.
 
 ### Overview
 
-Show tenant totals and statuses, recent signups, attention alerts, failed jobs or notifications, and recent support actions. Values are safe summaries. Do not expose raw secrets, payment credentials, private evidence, or unrestricted customer records.
+Show tenant totals and statuses, recent signups, attention alerts, failed jobs or notifications, and recent operator actions. Values are safe summaries. Do not expose raw secrets, payment credentials, private evidence, or unrestricted customer records.
 
 ### Businesses
 
-Search and list businesses by safe identifiers, status, plan, and timestamps. A tenant detail view contains tabs for Overview, Subscription, Entitlements, Members, Support Access, and Audit History. Each tab returns the least data required for its task.
+Search and list businesses by safe identifiers, status, plan, and timestamps. A tenant detail view contains tabs for Overview, Subscription, Entitlements, Members, and Audit History. Each tab returns the least data required for its task.
 
 ### Subscriptions and plans
 
@@ -66,17 +65,13 @@ Show immutable plan versions, current subscription state, billing period, trial 
 
 Show effective capability flags and limits after plan, account, and approved override evaluation. Operators may not grant capabilities by editing a client payload. Changes use a controlled command with authorization, reason, effective time, and audit record.
 
-### Support access
-
-A support grant is tenant-scoped, permission-scoped, time-bound, and revocable. Creating one requires the target tenant, permission codes, reason, start time, expiration, and idempotency key. The grant must be visible in support activity and audit history. Private documents require a separate capability. There is no permanent universal bypass role.
-
 ### Admin team
 
 List internal operators with safe identity fields, roles, status, last activity summary, and assignment information. Membership changes require owner-level authorization and audit history. Do not mirror unnecessary Clerk profile data.
 
 ### Audit log
 
-Provide append-only, filterable metadata: actor, action, entity type and identifier, support grant, request ID, timestamp, outcome, and redacted summary. Never store full request bodies, bearer tokens, raw webhook secrets, or sensitive before-and-after payloads.
+Provide append-only, filterable metadata: actor, action, entity type and identifier, request ID, timestamp, outcome, and redacted summary. Historical records may retain business-owned support-grant references. Never store full request bodies, bearer tokens, raw webhook secrets, or sensitive before-and-after payloads.
 
 ### Jobs and notifications
 
@@ -88,7 +83,7 @@ Show service health, webhook processing health, storage status, and configuratio
 
 ## 5. Data ownership and database decision
 
-The operator API is a separate control plane, not a second tenant database. Neon remains the system of record for tenant, membership, subscription, entitlement, support-grant, audit, outbox, and notification facts.
+The operator API is a separate control plane, not a second tenant database. The business platform remains the system of record for tenant, membership, subscription, entitlement, audit, outbox, and notification facts. Historical support-grant data, where present, remains business-owned and is not managed by the operator system.
 
 The first implementation must not clone tenant data into an operator database. Read projections should come from controlled business API endpoints or reviewed read-only queries. Mutations must use controlled internal business commands so tenant invariants, row-level security, transactions, idempotency, and audit behavior remain in one place.
 
@@ -110,8 +105,7 @@ If operator-only records are needed later, they must be explicitly classified an
 - Authorize every request on the server, including reads.
 - Require a reason and idempotency key for mutating operator commands.
 - Use request IDs and redacted structured logs. Never log secrets, tokens, raw webhook bodies, or unnecessary personal data.
-- Apply rate limits to authentication, search, exports, grants, and retry operations.
-- Enforce support-grant expiry on every request, not only at creation time.
+- Apply rate limits to authentication, search, exports, and retry operations.
 - Apply least privilege and separation of duties for billing, support, and operator administration.
 - Use generic error responses for authorization failures and do not disclose whether protected records exist.
 - Export and download operations are durable jobs, scope-bound, expiring, and audited.
@@ -127,7 +121,7 @@ Mutations are duplicate-safe for sequential and concurrent retries. Pagination i
 
 1. **Foundation:** repository rules, health endpoint, request context, Clerk verification boundary, operator role model, response and error conventions, CI, and documentation.
 2. **Read-only control plane:** overview, business list, safe tenant detail, subscriptions, entitlements, audit search, jobs, and notifications.
-3. **Owner and support commands:** time-bound support grants, revoke and expire flows, operator team administration, and fully audited mutations.
+3. **Owner commands:** operator team administration and fully audited mutations.
 4. **Operations:** job retry, notification retry, exports, platform health, and incident workflows.
 5. **Hardening:** real Neon integration tests, threat review, rate-limit tuning, retention review, load tests, accessibility, and production runbooks.
 
@@ -136,8 +130,8 @@ Each phase ships behind explicit acceptance criteria. A passing build does not c
 ## 10. Success measures
 
 - Every operator action has an attributable, searchable audit event.
-- No route permits access outside the operator's role and active support grant.
-- Repeated commands do not duplicate grants, retries, or billing changes.
+- No route permits access outside the operator's server-side role and permission.
+- Repeated commands do not duplicate retries or billing changes.
 - Operators can diagnose common tenant and job issues without unrestricted customer browsing.
 - Failed jobs and notifications have safe, actionable status and bounded retry behavior.
 - Business data remains owned by the business platform and consistent across both surfaces.

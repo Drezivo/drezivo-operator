@@ -10,7 +10,7 @@ function overviewData() {
       active: 5, trial: 1, grace: 2, past_due: 1, restricted: 1, cancelled: 2, missing: 1,
       lifecycle: { expired_trials: 3, expired_grace: 4, incomplete_trials: 5, incomplete_grace: 6 },
     },
-    attention: { failed_jobs: 2, failed_notifications: 1, active_support_grants: 3 },
+    attention: { failed_jobs: 2, failed_notifications: 1 },
     recent_businesses: [{ id: "biz_1", name: "Northstar Homes", slug: "northstar-homes", status: "active", created_at: "2026-09-24T16:00:00Z" }],
   };
 }
@@ -23,7 +23,6 @@ describe("OverviewPanel", () => {
     expect(screen.getByText("northstar-homes")).toBeInTheDocument();
     expect(screen.getByText(/Snapshot as of.*Asia\/Manila/)).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Business" })).toBeInTheDocument();
-    expect(screen.getByText("Active support grants")).toBeInTheDocument();
     expect(screen.getByText("Businesses")).toBeInTheDocument();
     expect(screen.getByText("8")).toBeInTheDocument();
   });

@@ -8,7 +8,7 @@ Read this file, `CONTRIBUTING.md`, and the relevant documents in `docs/` before 
 - The business API owns tenant and business invariants. Do not duplicate tenant writes here.
 - Use allowlisted internal commands or reviewed read projections. Never add arbitrary SQL or unrestricted customer browsing.
 - Every privileged action has server-side authorization, an explicit scope, idempotency where it mutates state, and an audit record.
-- Support access is temporary, tenant-scoped, permission-scoped, reason-coded, and revocable.
+- Operator support-grant, support-activity, and workspace-access routes are retired. Do not reintroduce them without a separate product and authorization decision. Business-owned historical records remain outside this repository's ownership.
 - The business database is Supabase PostgreSQL, shared with the business system. This repository owns no tables; a new operator table or migration requires a separate design review. Direct business-database access is limited to the audited tenant-admin adapter (ADR 0025).
 - Never commit any `.env*` file, including examples. Document variables in README or `docs/` instead.
 

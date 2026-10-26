@@ -1,6 +1,6 @@
 # ADR 0027: Superadmin workspace troubleshooting and clothing deletion
 
-Status: Implemented locally. No hosted migration, deployment or provider change authorized.
+Status: Retired by ADR 0028 (2026-10-26). Historical implementation record only. No hosted migration, deployment or provider change was authorized by that implementation.
 
 The founder and Ryanny use individual accounts with the same Superadmin permissions. Either
 can open any workspace, including a locked or expired subscription, without becoming a merchant

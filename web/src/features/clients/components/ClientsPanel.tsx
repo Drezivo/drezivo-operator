@@ -10,10 +10,9 @@ import { ClientDetailView } from "./ClientDetailView";
 export type ClientsTab = "businesses" | "people";
 export type ClientsNavigation = { client?: string | null; tab?: ClientsTab; filter?: ClientFilter };
 
-export function ClientsPanel({ getToken, workspaceGrantId = null, clientId = null, tab = "businesses", filter = DEFAULT_CLIENT_FILTER, onNavigate }: {
+export function ClientsPanel({ getToken, clientId = null, tab = "businesses", filter = DEFAULT_CLIENT_FILTER, onNavigate }: {
   getToken: () => Promise<string | null>;
   clientId?: string | null;
-  workspaceGrantId?: string | null;
   tab?: ClientsTab;
   filter?: ClientFilter;
   onNavigate: (next: ClientsNavigation) => void;
@@ -24,7 +23,7 @@ export function ClientsPanel({ getToken, workspaceGrantId = null, clientId = nul
     return value;
   }, [getToken]);
 
-  if (clientId) return <ClientDetailView key={clientId} workspaceGrantId={workspaceGrantId} tenantId={clientId} token={token} onBack={() => onNavigate({ client: null })} />;
+  if (clientId) return <ClientDetailView key={clientId} tenantId={clientId} token={token} onBack={() => onNavigate({ client: null })} />;
   return <div className="clients">
     <div className="segmented" role="tablist" aria-label="Show">
       {(["businesses", "people"] as const).map((id) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => onNavigate({ tab: id })}>{id === "businesses" ? "Businesses" : "People"}</button>)}

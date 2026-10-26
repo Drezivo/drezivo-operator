@@ -28,7 +28,6 @@ Feature controllers receive typed repositories through their route factories. Th
 | Assigned plans | `/businesses/:tenantId/entitlements` |
 | Payment methods | `/platform-payment-methods*` |
 | Operators | `/operators` |
-| Support access | `/support-grants*`, `/support-activity`, tenant workspace access |
 | Audit logs | `/audit-events` |
 | Operations | `/jobs*`, `/notifications*` |
 | Sessions | `/session*`, `/webhooks/operator-clerk` |

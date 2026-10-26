@@ -12,7 +12,7 @@ The exact route is `GET /api/v1/audit-events`. It is a read-only surface and req
 
 ## Authorization and scope
 
-Before the adapter is called, the route verifies a valid internal identity, active operator membership, known role, `audit.read`, and any tenant or account scope resolved by the server. Unknown roles, permissions, scope kinds, and filter values fail closed. A support grant can narrow an already-authorized request, but cannot widen it or provide universal audit access.
+Before the adapter is called, the route verifies a valid internal identity, active operator membership, known role, `audit.read`, and any tenant or account scope resolved by the server. Unknown roles, permissions, scope kinds, and filter values fail closed. Retired support grants do not provide or widen audit access.
 
 Every request receives a request ID. Authorization is evaluated on every request. Responses use `Cache-Control: no-store`.
 
@@ -56,7 +56,7 @@ type AuditEvent = {
 
 The list envelope contains only `items` and `next_cursor`. UUIDs, timestamps, enums, lengths, nullability, and unknown-key absence are validated strictly. The adapter must reject malformed, extra, contradictory, or privacy-unsafe upstream data. It must not strip unexpected fields and continue.
 
-`actor_kind` is limited to `staff`, `operator`, and `system` in this operator projection. Customer and account actors remain in the business audit history but are excluded from this surface. `actor_key` is an approved stable opaque identifier, such as a hashed subject key. It is not an email, display name, Clerk profile, access token, session value, or raw credential. `support_grant_id` is a nullable UUID used only to trace activity performed under an approved support grant; it is not a grant token or permission substitute. `redacted_summary` is bounded, structured-safe text supplied by the business API. It must not contain PII, raw request or response bodies, payment evidence, private file content, secrets, tokens, provider payloads, or arbitrary JSON. The projection does not include IP addresses, browser identification strings, reason text, headers, cookies, SQL, or internal stack details.
+`actor_kind` is limited to `staff`, `operator`, and `system` in this operator projection. Customer and account actors remain in the business audit history but are excluded from this surface. `actor_key` is an approved stable opaque identifier, such as a hashed subject key. It is not an email, display name, Clerk profile, access token, session value, or raw credential. Historical business audit records may retain a nullable `support_grant_id`; it is provenance only and does not provide Operator access or authorization. `redacted_summary` is bounded, structured-safe text supplied by the business API. It must not contain PII, raw request or response bodies, payment evidence, private file content, secrets, tokens, provider payloads, or arbitrary JSON. The projection does not include IP addresses, browser identification strings, reason text, headers, cookies, SQL, or internal stack details.
 
 ## Adapter boundary and failure mapping
 

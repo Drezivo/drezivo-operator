@@ -94,26 +94,15 @@ docker compose -f compose.local.yaml --profile integration down
 ```
 
 
-Workspace support is available under **Clients -> business -> Workspace administration**.
-Choose read-only troubleshooting or repair access and provide a reason. Both local Superadmins
-can use either mode in every synthetic workspace. Access expires after the selected duration and
-Close workspace access revokes it. Module views include record IDs and operational state without
-customer contact details, private proofs or merchant activity logs.
-
-Repair supports encoding corrections for clothing, variants, physical stock, categories and
-branches. Clothing has a permanent deletion preview with dependency counts. Operators type the
-displayed name and clothing code; the request also binds the exact record ID and graph fingerprint.
-Linked operational history blocks deletion. A successful command physically removes
-unused inventory rows and queues photo cleanup; it never starts a hosted storage or email worker.
-Financial and reservation workflows are not replaced by arbitrary record editing.
+Operator support-grant, support-activity, and workspace-administration routes are retired. This
+local stack does not expose a support-access or workspace-repair flow. Any business-owned grant
+records, audit history, or migrations remain outside this repository and are not modified here.
 
 
 Run the heavy checks sequentially with the dev compiler paused, especially on the local8GB Docker
 VM. The smoke script respects Retry-After and reuses the same intent when rate limited.
 
-Support access and Assigned plans select businesses by name. Permissions are visible choices;
-no permission code or grant UUID must be memorized. Active grants have row-level open/revoke
-actions. Opening an existing grant revalidates its operator, workspace and expiry.
+Assigned plans select businesses by name.
 
 Free workspaces have no renewal due. Their upgrade payments show the requested paid plan;
 approval verifies the database price and queues the existing business activation workflow.

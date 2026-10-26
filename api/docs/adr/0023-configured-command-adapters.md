@@ -1,6 +1,6 @@
 # ADR 0023: configured command adapters and durable ownership
 
-**Status:** Accepted for implementation
+**Status:** Partially superseded by ADR 0028 (2026-10-26) for support-grant commands; operations retry adapter remains in effect.
 
 Support-grant and operations-retry routes now use typed command adapters when internal-service configuration is present. Commands send only normalized route input, the verified operator subject, request ID, and one idempotency key per user intent. The business service owns idempotency records, conditional state transitions, audit outcomes, outbox creation, provider uncertainty, leases, and retries.
 

@@ -59,6 +59,9 @@ Updated: 2026-10-15 (Asia/Manila).
 
 
 ## Workspace support extension (2026-10-15)
+- Retired 2026-10-26 by ADR 0028: Operator grant/activity/workspace UI and API were removed.
+  The implementation details below are historical. Business-owned grants, audit data, and
+  migration history were not changed by the retirement.
 - Migration0083 + operator-workspace API + WorkspacePanel in each client detail. Two Superadmins;
   no subagents used. Any tenant can be scoped, independent of subscription/manual locks.
 - Self-issued reasoned grants: read/repair, 5-120min, tenant+subject bound, checked every operation.

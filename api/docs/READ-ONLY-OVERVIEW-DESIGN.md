@@ -76,7 +76,6 @@ type OperatorOverview = {
   attention: {
     failed_jobs: number;
     failed_notifications: number;
-    active_support_grants: number;
   };
   recent_businesses: Array<{
     id: string;

@@ -12,9 +12,9 @@ business, suspend and reactivate a staff member, set a trial end date, activate 
 manual QR/GCash payment, and correct a business name or time zone.
 
 ADR 0001 says the Operator API never writes business data directly; the business API owns every
-invariant and exposes operator commands over internal routes. On business `main` (commit `8814859`)
-those internal routes cover only support grants, support activity and job retries. There is no route
-for any action above, and the business repository is outside this change's scope.
+invariant and exposes operator commands over internal routes. At the time of the original review,
+those routes covered support grants, support activity and job retries. Support-grant and activity
+routes were retired by ADR 0028; the business repository remains outside this change's scope.
 
 ## Decision
 

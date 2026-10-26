@@ -40,9 +40,9 @@ export function createConsoleDbContext(options: TenantAdminDbOptions): ConsoleDb
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       const code = (error as { code?: string }).code;
-      if (code === '42501') throw new AppError(403, 'FORBIDDEN', 'Workspace access has expired, was closed, or does not allow this action.');
-      if (code === '23503') throw new AppError(409, 'STATE_CONFLICT', 'This clothing has linked records. Review the deletion preview before continuing.');
-      if (code === '23514' || code === '23502' || code === '22P02') throw new AppError(400, 'VALIDATION_FAILED', 'The correction violates the workspace data rules.');
+      if (code === '42501') throw new AppError(403, 'FORBIDDEN', 'The operator database action is not permitted.');
+      if (code === '23503') throw new AppError(409, 'STATE_CONFLICT', 'This record has linked data. Refresh and review its current state before continuing.');
+      if (code === '23514' || code === '23502' || code === '22P02') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command contains invalid data.');
       if (code === '23505') throw new AppError(409, 'STATE_CONFLICT', 'This intent or resource state has changed. Refresh before trying again.');
       if (code === 'P0002') throw new AppError(404, 'NOT_FOUND', 'The resource was not found.');
       if (code === '22023') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command is invalid.');

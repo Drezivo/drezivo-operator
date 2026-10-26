@@ -17,6 +17,6 @@ export type Overview = {
       incomplete_grace: number;
     };
   };
-  attention: { failed_jobs: number; failed_notifications: number; active_support_grants: number };
+  attention: { failed_jobs: number; failed_notifications: number };
   recent_businesses: Array<{ id: string; name: string; slug: string; status: "active" | "restricted" | "cancelled"; created_at: string }>;
 };
