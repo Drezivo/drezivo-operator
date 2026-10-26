@@ -124,6 +124,97 @@ describe("AuthenticatedConsole view routing", () => {
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
   });
 
+  it("does not render the previous view data while subscriptions load", async () => {
+    let finishSubscriptions: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(overviewEnvelope())
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishSubscriptions = resolve; }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(<AuthenticatedConsole />);
+    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
+
+    mocks.query = "view=subscriptions";
+    rerender(<AuthenticatedConsole />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
+    expect(screen.queryByText(/Snapshot as of/)).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_empty"));
+    });
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+  });
+
+  it("loads subscriptions after leaving the Clients view", async () => {
+    mocks.query = "view=clients";
+    let finishSubscriptions: ((response: Response) => void) | undefined;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes("/subscriptions")) {
+        return new Promise<Response>((resolve) => { finishSubscriptions = resolve; });
+      }
+      return Promise.resolve(responseEnvelope({ items: [], next_cursor: null }, "req_clients_loaded"));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { rerender } = render(<AuthenticatedConsole />);
+    expect(await screen.findByText("No businesses yet")).toBeInTheDocument();
+    expect(await screen.findByText("req_clients_loaded")).toBeInTheDocument();
+
+    mocks.query = "view=subscriptions";
+    rerender(<AuthenticatedConsole />);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
+    expect(screen.queryByText("No businesses yet")).not.toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/subscriptions"))).toBe(true));
+
+    await act(async () => {
+      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_after_clients"));
+    });
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+  });
+
+  it("loads subscriptions directly and follows the returned page cursor", async () => {
+    mocks.query = "view=subscriptions";
+    const subscription = {
+      tenant_id: "00000000-0000-4000-8000-000000000001",
+      business_name: "First Subscription Business",
+      plan_code: "starter",
+      status: "active",
+      currency: "PHP",
+      current_period_end: "2026-11-01T00:00:00.000Z",
+      amount_minor: "10000",
+      paid_at: null,
+      reviewed_by: null,
+      payer_key: null,
+      paid_amount_minor: null,
+      payment_status: null,
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(responseEnvelope({ items: [subscription], next_cursor: "next / cursor" }, "req_subscriptions_page1"))
+      .mockResolvedValueOnce(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_page2"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AuthenticatedConsole />);
+
+    expect(await screen.findByText("First Subscription Business")).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25&cursor=next%20%2F%20cursor");
+  });
+
+  it("shows an API error instead of crashing on a malformed subscriptions payload", async () => {
+    mocks.query = "view=subscriptions";
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseEnvelope({ next_cursor: null }, "req_subscriptions_invalid")));
+
+    render(<AuthenticatedConsole />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The Operator API returned invalid subscriptions data.");
+  });
+
   it("shows a recoverable session error and does not fetch when Clerk returns no token", async () => {
     mocks.getToken.mockResolvedValueOnce(null);
     const fetchMock = vi.fn();

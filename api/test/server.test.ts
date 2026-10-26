@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAppServer, createShutdownHandler, serverLimits } from '../src/server.js';
-import { isProcessReady, markProcessReady } from '../src/shared/lifecycle/process-lifecycle.js';
+import { createAppServer, createShutdownHandler, createStartupFailureHandler, serverLimits } from '../src/server.js';
+import { logger } from '../src/shared/logging/logger.js';
+import { isProcessReady, markProcessDraining, markProcessReady } from '../src/shared/lifecycle/process-lifecycle.js';
 
 describe('server lifecycle', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     markProcessReady();
   });
 
@@ -46,6 +48,21 @@ describe('server lifecycle', () => {
     expect(closeAllConnections).toHaveBeenCalledTimes(1);
   });
 
+  it('logs and rethrows startup failures without marking the process ready', () => {
+    markProcessDraining();
+    const error = Object.assign(new Error('listen EADDRINUSE: address already in use 127.0.0.1:5080'), { code: 'EADDRINUSE' });
+    const logError = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+
+    expect(() => createStartupFailureHandler(5080)(error)).toThrow(error);
+    expect(isProcessReady()).toBe(false);
+    expect(logError).toHaveBeenCalledWith({
+      event: 'api.server.startup_failed',
+      host: expect.any(String),
+      port: 5080,
+      error: { name: 'Error', code: 'EADDRINUSE', message: error.message },
+    }, 'API server failed to start');
+  });
+
   it('binds only to loopback when OPERATOR_API_HOST is set to 127.0.0.1', async () => {
     const sigtermListeners = new Set(process.listeners('SIGTERM'));
     const sigintListeners = new Set(process.listeners('SIGINT'));
@@ -53,6 +70,8 @@ describe('server lifecycle', () => {
     vi.stubEnv('OPERATOR_API_HOST', '127.0.0.1');
     vi.resetModules();
     const { startServer: startConfiguredServer } = await import('../src/server.js');
+    const { logger: serverLogger } = await import('../src/shared/logging/logger.js');
+    const logInfo = vi.spyOn(serverLogger, 'info').mockImplementation(() => undefined);
     const server = startConfiguredServer(0);
 
     try {
@@ -60,7 +79,16 @@ describe('server lifecycle', () => {
         server.once('listening', resolve);
         server.once('error', reject);
       });
-      expect(server.address()).toMatchObject({ address: '127.0.0.1' });
+      const address = server.address();
+      expect(address).toMatchObject({ address: '127.0.0.1' });
+      if (address === null || typeof address === 'string') throw new Error('Expected a TCP server address.');
+      expect(logInfo).toHaveBeenCalledTimes(1);
+      expect(logInfo).toHaveBeenCalledWith({
+        event: 'api.server.listening',
+        host: address.address,
+        port: address.port,
+      }, 'API server is listening');
+      expect(isProcessReady()).toBe(true);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
       for (const listener of process.listeners('SIGTERM')) {

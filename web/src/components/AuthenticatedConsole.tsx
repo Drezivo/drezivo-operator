@@ -5,7 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowClockwise, Buildings, ChartLineUp, CheckCircle, CircleNotch, ClockCounterClockwise, Command, CreditCard, Gear, House, List, MagnifyingGlass, QrCode, ShieldCheck, SignOut, SquaresFour, Storefront, WarningCircle, X } from "@phosphor-icons/react";
-import { ApiError, apiRequest, PageData, resourcePaths, resourceRequest, withCursor } from "@/lib/api";
+import { ApiError, apiRequest, isSubscriptionPage, PageData, resourcePaths, resourceRequest, SubscriptionPage, withCursor } from "@/lib/api";
 import { analyticsPath, parseAnalyticsResponse } from "@/lib/analytics";
 import { resources, ResourceId, resourceHelp, visibleResources } from "@/lib/resources";
 import { MutationGuard } from "@/lib/mutations";
@@ -29,7 +29,7 @@ import { SubscriptionsPanel } from './SubscriptionsPanel';
 import { useOperatorAuth, isLocalOperator } from '@/lib/local-auth';
 import { ThemeToggle } from "./ThemeToggle";
 
-type LoadState = { status: "loading" } | { status: "ready"; data: unknown; requestId: string } | { status: "error"; error: ApiError };
+type LoadState = { status: "loading"; key: string | null } | { status: "ready"; key: string; data: unknown; requestId: string } | { status: "error"; key: string; error: ApiError };
 type TableAction = { key: string; label: string; path: string; requiresReason?: boolean; body?: unknown };
 
 function dependencyForResource(resource: ResourceId): "Business API" | "Clerk operator directory" | undefined {
@@ -148,7 +148,7 @@ export function AuthenticatedConsole() {
   const loadSequenceRef = useRef(0);
   const activeRequestControllerRef = useRef<AbortController | null>(null);
   const refreshPendingRef = useRef(false);
-  const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [state, setState] = useState<LoadState>({ status: "loading", key: null });
   const [refreshPending, setRefreshPending] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [actionError, setActionError] = useState<ApiError | null>(null);
@@ -178,6 +178,8 @@ export function AuthenticatedConsole() {
   const activeCursorState = cursorState.basePath === basePath ? cursorState : { basePath, cursors: [null], index: 0 };
   const currentCursor = activeCursorState.cursors[activeCursorState.index] ?? null;
   const path = basePath ? withCursor(basePath, currentCursor) : null;
+  const stateKey = path ? `${viewKey}:${path}` : null;
+  const viewState: LoadState = state.key === stateKey ? state : { status: "loading", key: stateKey };
   const currentPath = useRef(path);
   currentPath.current = path;
 
@@ -198,11 +200,12 @@ export function AuthenticatedConsole() {
     const requestSequence = ++loadSequenceRef.current;
     const requestedViewKey = viewKey;
     const requestedPath = path;
+    const requestedStateKey = `${requestedViewKey}:${requestedPath}`;
     const isCurrentRequest = () => requestSequence === loadSequenceRef.current
       && currentViewKeyRef.current === requestedViewKey
       && currentPath.current === requestedPath
       && !signal?.aborted;
-    if (isCurrentRequest()) setState({ status: "loading" });
+    if (isCurrentRequest()) setState({ status: "loading", key: requestedStateKey });
     setActionError(null);
     try {
       const token = await getTokenWithTimeout(getToken, signal);
@@ -214,10 +217,13 @@ export function AuthenticatedConsole() {
         try { data = parseAnalyticsResponse(result.data); }
         catch (error) { throw new ApiError(error instanceof Error ? error.message : "The operator API returned invalid analytics.", "invalid_response"); }
       }
-      if (isCurrentRequest()) setState({ status: "ready", data, requestId: result.requestId });
+      if (active.id === "subscriptions" && !isSubscriptionPage(result.data)) {
+        throw new ApiError("The Operator API returned invalid subscriptions data.", "invalid_response", undefined, "INVALID_RESPONSE", result.requestId);
+      }
+      if (isCurrentRequest()) setState({ status: "ready", key: requestedStateKey, data, requestId: result.requestId });
     } catch (error) {
       if (!isCurrentRequest() || (error instanceof DOMException && error.name === "AbortError")) return;
-      setState({ status: "error", error: error instanceof ApiError ? error : new ApiError("An unexpected error occurred.", "http") });
+      setState({ status: "error", key: requestedStateKey, error: error instanceof ApiError ? error : new ApiError("An unexpected error occurred.", "http") });
     }
   }, [active.id, getToken, path, viewKey]);
 
@@ -355,14 +361,14 @@ export function AuthenticatedConsole() {
           : active.id === "payments" ? <PaymentsPanel getToken={getToken} onOpenBusiness={(id) => navigateClients({ client: id })} />
           : active.id === "payment-methods" ? <PaymentMethodsPanel getToken={getToken} />
           : active.id === "entitlements" && !selectedBusiness ? <EmptyPanel title="Choose a business" body="Select a business by name above to review its plan and included capabilities." />
-            : state.status === "loading" ? <LoadingPanel />
-              : state.status === "error" ? <StatePanel error={state.error} dependency={dependencyForResource(active.id)} onRetry={() => void load()} />
-                : active.id === "overview" ? <OverviewPanel data={state.data} onKeepSidebarScroll={rememberSidebarScroll} />
-                  : active.id === "analytics" ? <AnalyticsPanel data={state.data as import("@/lib/analytics").AnalyticsResponse} months={analyticsMonths} onMonthsChange={(months) => { rememberSidebarScroll(); const params = new URLSearchParams(window.location.search); params.set("view", "analytics"); params.set("months", String(months)); window.history.pushState(null, "", `/?${params.toString()}`); }} />
-                  : active.id === "subscriptions" ? <SubscriptionsPanel data={state.data as Parameters<typeof SubscriptionsPanel>[0]["data"]} pageNumber={activeCursorState.index+1} hasPrevious={activeCursorState.index>0} onPrevious={previousPage} onNext={nextPage} />
-                  : active.id === "entitlements" ? <EntitlementsPanel data={state.data} />
-                  : <DataTable token={selectorToken} data={state.data} resource={active.id} onAction={act} pending={pending} actionError={actionError} actionNotice={actionNotice} clearActionError={() => setActionError(null)} clearActionNotice={() => setActionNotice(null)} onKeepSidebarScroll={rememberSidebarScroll} pageNumber={activeCursorState.index + 1} hasPrevious={activeCursorState.index > 0} onPrevious={previousPage} onNext={nextPage} />}
-        {state.status === "ready" && path && <div className="loaded-request"><RequestId requestId={state.requestId} /></div>}
+            : viewState.status === "loading" ? <LoadingPanel />
+              : viewState.status === "error" ? <StatePanel error={viewState.error} dependency={dependencyForResource(active.id)} onRetry={() => void load()} />
+                : active.id === "overview" ? <OverviewPanel data={viewState.data} onKeepSidebarScroll={rememberSidebarScroll} />
+                  : active.id === "analytics" ? <AnalyticsPanel data={viewState.data as import("@/lib/analytics").AnalyticsResponse} months={analyticsMonths} onMonthsChange={(months) => { rememberSidebarScroll(); const params = new URLSearchParams(window.location.search); params.set("view", "analytics"); params.set("months", String(months)); window.history.pushState(null, "", `/?${params.toString()}`); }} />
+                  : active.id === "subscriptions" ? <SubscriptionsPanel data={viewState.data as SubscriptionPage} pageNumber={activeCursorState.index+1} hasPrevious={activeCursorState.index>0} onPrevious={previousPage} onNext={nextPage} />
+                  : active.id === "entitlements" ? <EntitlementsPanel data={viewState.data} />
+                  : <DataTable token={selectorToken} data={viewState.data} resource={active.id} onAction={act} pending={pending} actionError={actionError} actionNotice={actionNotice} clearActionError={() => setActionError(null)} clearActionNotice={() => setActionNotice(null)} onKeepSidebarScroll={rememberSidebarScroll} pageNumber={activeCursorState.index + 1} hasPrevious={activeCursorState.index > 0} onPrevious={previousPage} onNext={nextPage} />}
+        {viewState.status === "ready" && path && <div className="loaded-request"><RequestId requestId={viewState.requestId} /></div>}
         <footer className="page-footer"><span>Private operator workspace</span><span>Access checks are enforced by the API.</span></footer>
       </div>
       {/* Phones: thumb-reach tabs for the first four views; Menu opens the full navigation drawer (the hamburger still does too). */}
