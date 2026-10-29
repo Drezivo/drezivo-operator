@@ -23,6 +23,7 @@ describe('development watcher output filter', () => {
     const output = collectFilteredOutput([
       "Change det",
       "ected in 'D:\\drezivo-operator\\api\\src\\shared\\logging\\logger.ts'\r\n",
+      "\u001B[32mChange detected in 'D:\\drezivo-operator\\api\\src\\shared\\logging\\logger.ts'\u001B[0m\n",
       "Restarting 'src/server.ts'\n",
       '{"level":30,"event":"api.server.listening","host":"127.0.0.1","port":5080}\n',
       '{"level":40,"msg":"configuration warning"}\n',
