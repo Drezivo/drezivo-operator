@@ -128,21 +128,10 @@ describe('operator API foundation', () => {
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
-  it('protects directory and support activity routes', async () => {
+  it('protects the operator directory route', async () => {
     const operators = await request(app).get('/api/v1/operators');
-    const activity = await request(app).get('/api/v1/support-activity');
     expect(operators.status).toBe(401);
     expect(operators.body.error.code).toBe('UNAUTHENTICATED');
-    expect(activity.status).toBe(401);
-    expect(activity.body.error.code).toBe('UNAUTHENTICATED');
-  });
-  it('protects support grant command routes before the unavailable command port', async () => {
-    const response = await request(app)
-      .post('/api/v1/support-grants')
-      .send({});
-    expect(response.status).toBe(401);
-    expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.body.error.code).toBe('UNAUTHENTICATED');
   });
   it('protects operations retry command routes before the unavailable command port', async () => {
     const response = await request(app)

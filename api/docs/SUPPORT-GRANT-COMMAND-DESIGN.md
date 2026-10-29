@@ -1,7 +1,9 @@
 # Support grant command boundary
 
-**Status:** Fail-closed route boundary mounted; business command integration remains blocked
+**Status:** Retired by ADR 0028 on 2026-10-26. This is a historical design; no operator route is mounted.
 **Scope:** Internal operator API commands delegated to the business API
+
+The route and command specifications below are retained for historical context only. They do not authorize rebuilding support access.
 
 ## Purpose
 

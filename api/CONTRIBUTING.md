@@ -19,7 +19,7 @@ Use Conventional Commits. The subject is imperative, lowercase, and no longer th
 
 ```text
 feat(auth): verify internal operator membership
-fix(grants): reject expired support access
+fix(auth): reject unsupported operator role
 docs(operator): clarify control-plane boundary
 ```
 

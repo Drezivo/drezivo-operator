@@ -4,7 +4,7 @@ Date: 2026-10-26 (Asia/Singapore). Local app: `http://localhost:3010`. Signed in
 
 ## Browser checks
 
-- Opened Overview, Analytics, Clients, Subscriptions, Assigned plans, Payments, Payment methods, Operators, Support access, Audit log, Background jobs, and Notifications through path links.
+- Opened Overview, Analytics, Clients, Subscriptions, Assigned plans, Payments, Payment methods, Operators, Audit log, Background jobs, and Notifications through path links.
 - All enabled feature routes loaded without a blocked/error panel.
 - Followed a recent business to `/clients/[tenantId]`; refreshed that dynamic URL and loaded the matching business.
 - Preserved sidebar scroll at exactly 421 pixels through Back, Forward, and main-content business links.

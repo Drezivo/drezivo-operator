@@ -25,6 +25,6 @@ export function ClientsPage({ tenantId = null }: { tenantId?: string | null }) {
     router.push(path + "?" + query.toString(), { scroll: next.client !== undefined || Boolean(next.tab) });
   }, [router, remember, tab, filter, tenantId]);
   return <ConsolePage feature="clients" title={tenantId ? "Business" : undefined} description={tenantId ? "Account, people and actions for one client business." : undefined}>
-    <ClientsPanel getToken={getToken} clientId={tenantId} workspaceGrantId={params.get("workspaceGrant")} tab={tab} filter={filter} onNavigate={navigate} />
+    <ClientsPanel getToken={getToken} clientId={tenantId} tab={tab} filter={filter} onNavigate={navigate} />
   </ConsolePage>;
 }

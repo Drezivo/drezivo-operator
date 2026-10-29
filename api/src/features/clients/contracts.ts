@@ -9,7 +9,7 @@ export const uuid = z.string().uuid();
 const overviewCount = z.number().int().nonnegative().safe();
 const overviewText = (max: number) => z.string().trim().min(1).max(max);
 
-export const operatorOverviewSchema = z.object({
+const operatorOverviewSourceSchema = z.object({
   verified_cash_collections: z.array(z.object({currency:z.string().regex(/^[A-Z]{3}$/),amount_minor:z.string().regex(/^[0-9]+$/),payment_count:overviewCount}).strict()).optional(),
   as_of: isoDate,
   businesses: z.object({ total: overviewCount, by_status: z.array(z.object({ status: statusSchema, count: overviewCount }).strict()).length(3).refine((items) => new Set(items.map((item) => item.status)).size === 3) }).strict(),
@@ -21,9 +21,15 @@ export const operatorOverviewSchema = z.object({
       incomplete_trials: overviewCount, incomplete_grace: overviewCount,
     }).strict(),
   }).strict(),
-  attention: z.object({ failed_jobs: overviewCount, failed_notifications: overviewCount, active_support_grants: overviewCount }).strict(),
+  attention: z.object({ failed_jobs: overviewCount, failed_notifications: overviewCount, active_support_grants: overviewCount.optional() }).strict(),
   recent_businesses: z.array(z.object({ id: uuid, name: overviewText(200), slug: overviewText(100), status: statusSchema, created_at: isoDate }).strict()).max(50),
 }).strict();
+
+/** Accept the legacy upstream count during rollout, but never expose support grants in the operator API. */
+export const operatorOverviewSchema = operatorOverviewSourceSchema.transform(({ attention, ...overview }) => ({
+  ...overview,
+  attention: { failed_jobs: attention.failed_jobs, failed_notifications: attention.failed_notifications },
+}));
 
 const subscriptionSummarySchema = z.object({ plan_code: z.string().min(1), status: z.string().min(1), current_period_end: isoDate.nullable(), cancel_at_period_end: z.boolean() }).strict();
 export const businessSummarySchema = z.object({

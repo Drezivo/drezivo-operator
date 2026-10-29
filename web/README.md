@@ -47,7 +47,6 @@ slug or ID). **Manage** opens one business, where an operator can:
 - set the last trial day, or record a payment made outside the app (for example cash),
 - correct the business name or time zone,
 - suspend or reactivate a staff member,
-- open temporary read-only or repair workspace access, with operator-attributed audit records.
 
 Every action needs a reason (stored in the audit log), disables all buttons while it is in flight, and
 reuses the same `Idempotency-Key` if it is retried, so a double click or a retry never applies twice.
@@ -62,7 +61,7 @@ Environment variables are documented above. Never commit any `.env*` file, inclu
 
 The console shows only views whose Operator API routes and business endpoints are live. By default
 that is **Overview**, **Analytics**, **Clients**, **Subscriptions**, **Assigned plans**, **Operators**,
-**Support access**, **Audit log**, **Background jobs**, **Notifications**, **Payments** and **Payment methods**.
+**Audit log**, **Background jobs**, **Notifications**, **Payments** and **Payment methods**.
 The matching API and business migrations must be released first. Override the list with a comma-separated value in
 `NEXT_PUBLIC_OPERATOR_VIEWS` (for example `clients,operators`); unknown names are ignored.
 
@@ -90,13 +89,7 @@ businesses that sent a proof.
 
 The console uses the `/api/v1` routes for overview, businesses, subscriptions, business entitlements, audit events, operators, jobs, and notifications. Job and notification retries require an operator-provided reason. A retry sends that exact reason and an `Idempotency-Key` tied to the reason text. A failed retry keeps its key so a repeated request replays the same intent. Editing the reason starts a new intent. Requests use `cache: no-store`.
 
-The overview response includes a server-generated `as_of` snapshot time; the console does not send one as a query parameter. Its `active_support_grants` value is a count supplied by the API, which counts grants where `revoked_at IS NULL`, `starts_at <= as_of`, and `as_of < expires_at`. The browser displays the returned number and does not calculate grant status.
-
-Support access uses named business selection and readable permission choices. A reasoned grant
-opens one workspace in read-only or repair mode. Active grants can be resumed or revoked from
-their history row; the server rechecks operator, tenant and expiry. Repair allows encoding
-corrections and permanent deletion of unused clothing after dependency checks and confirmation.
-The Audit log shows platform billing and operator actions, excluding merchant and front-desk activity.
+The overview response includes a server-generated `as_of` snapshot time; the console does not send one as a query parameter. Support-grant creation, activity, and workspace administration have been retired from the operator console and API. Historical operator audit events remain available in the Audit log; merchant and front-desk activity remains excluded.
 
 ## Navigation and page shells
 
@@ -104,7 +97,7 @@ Regular console views use client-side navigation inside one persistent shell. Th
 
 ## Current backend readiness
 
-The API may return `403` when operator membership resolution denies the session, `503` when Clerk integration is not configured, or `503` when a read or command adapter is unavailable. These results are displayed as returned; this UI does not treat an API health check as proof that data dependencies are ready. The Analytics navigation link is visible to signed-in members of the internal organization because this console does not hold a verified permission-role view; the Operator API enforces `platform.analytics.read` and returns `403` for unauthorized roles. The legacy support-activity transport is not mounted; operator activity is served by the platform audit route.
+The API may return `403` when operator membership resolution denies the session, `503` when Clerk integration is not configured, or `503` when a read or command adapter is unavailable. These results are displayed as returned; this UI does not treat an API health check as proof that data dependencies are ready. The Analytics navigation link is visible to signed-in members of the internal organization because this console does not hold a verified permission-role view; the Operator API enforces `platform.analytics.read` and returns `403` for unauthorized roles. Operator activity is served by the platform audit route.
 
 ## Checks
 

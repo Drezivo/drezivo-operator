@@ -13,7 +13,6 @@ import { createBillingReadAdapter } from './features/subscriptions/repository/in
 import { createAnalyticsReadAdapter } from './features/analytics/repository/internal.js';
 import { createOperationsReadAdapter } from './features/operations/repository/internal.js';
 import { createDirectoryReadAdapter } from './features/operators/repository/internal.js';
-import { createSupportGrantCommandAdapter } from './features/support-access/repository/grants-internal.js';
 import { createOperationsRetryAdapter } from './features/operations/repository/retry-internal.js';
 import { unavailableTenantAdminPort, type TenantAdminPort, type ProofLinkSigner } from './features/clients/administration/index.js';
 import { unavailablePlatformPaymentsPort, type PlatformPaymentsPort } from './features/payment-methods/index.js';
@@ -23,7 +22,6 @@ import { unavailableAnalyticsReadPort } from './features/analytics/index.js';
 import { unavailableAuditPort } from './features/audit-logs/index.js';
 import { unavailableOperatorDirectoryPort } from './features/operators/index.js';
 import { unavailableOperationsPort } from './features/operations/index.js';
-import { unavailableSupportGrantCommandPort } from './features/support-access/index.js';
 import { unavailableOperationsRetryCommandPort } from './features/operations/retry/index.js';
 
 const configuredTenantAdminPort: TenantAdminPort = isTenantAdminConfigured()
@@ -69,7 +67,6 @@ const consolePorts: Partial<ConsolePorts> = {
   directory: configuredConsolePorts.directory ?? (isClerkConfigured()
     ? createOperatorDirectory(config.CLERK_SECRET_KEY!, config.OPERATOR_CLERK_ORGANIZATION_ID!)
     : serviceOptions ? createDirectoryReadAdapter(serviceOptions) : unavailableOperatorDirectoryPort),
-  grants: configuredConsolePorts.grants ?? (serviceOptions ? createSupportGrantCommandAdapter(serviceOptions) : unavailableSupportGrantCommandPort),
   retry: configuredConsolePorts.retry ?? (serviceOptions ? createOperationsRetryAdapter(serviceOptions) : unavailableOperationsRetryCommandPort),
 };
 

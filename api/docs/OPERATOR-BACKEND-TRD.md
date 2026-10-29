@@ -3,6 +3,8 @@
 **Status:** Foundation design  
 **Scope:** Backend repository for the internal operator system
 
+> **Current direction (2026-10-26):** Operator support-grant, support-activity, and workspace-access routes have been retired by [ADR 0028](adr/0028-retire-operator-support-access.md). Older route, role, and test references in this design are historical. Business-owned grant and audit records remain under the business system's ownership.
+
 ## Architecture
 
 The operator API is an Express and TypeScript REST service. It is a control-plane boundary between the internal operator web app and the business platform. The dependency direction is route validation and authorization, application service, controlled business command or read projection, then data access. HTTP handlers do not contain business rules or direct unrestricted tenant access.
@@ -21,7 +23,7 @@ The API is versioned under `/api/v1`. The unauthenticated `/health` endpoint is 
 
 Use one explicit internal operator boundary. The initial deployment may use a dedicated Clerk organization such as `Drezivo Operations`. Recommended roles are `platform_owner`, `platform_operator`, `support_operator`, `billing_operator`, and `read_only_operator`.
 
-Every protected request must have a valid Clerk token, active internal membership, and a Drezivo permission decision. Tenant-facing memberships do not grant operator access. Support grants add narrowly scoped, expiring tenant permissions and never replace operator authorization.
+Every protected request must have a valid Clerk token, active internal membership, and a Drezivo permission decision. Tenant-facing memberships do not grant operator access. No business workspace permission is conferred by an operator role.
 
 Authentication and protected operator requests pass through one shared, bounded rate limiter before route authorization. The default implementation is injectable in-process storage with conservative limits and generic `429 RATE_LIMITED` responses plus `Retry-After`; `/health` and `/ready` remain unthrottled. Production deployments must provide a distributed rate-limit store so limits hold across replicas and restarts. The limiter must never log raw tokens or client IP addresses.
 
@@ -29,7 +31,7 @@ Authentication and protected operator requests pass through one shared, bounded 
 
 No second tenant database is introduced in this foundation. Neon remains shared with the business system. The operator API must use controlled read models or internal API commands. Any operator-only table requires a separate migration review, ownership decision, least-privilege role, retention rule, and integration tests.
 
-Existing core facts include tenant and branch records, memberships, subscriptions, plan and entitlement versions, support grants, append-only audit events, outbox events, jobs, and notification deliveries. The operator service must respect their constraints and should not mirror Clerk profile fields or sensitive evidence.
+Existing core facts include tenant and branch records, memberships, subscriptions, plan and entitlement versions, append-only audit events, outbox events, jobs, and notification deliveries. Historical support-grant records, if present, remain business-owned. The operator service must respect their constraints and should not mirror Clerk profile fields or sensitive evidence.
 
 ## API standards
 
@@ -49,9 +51,6 @@ Suggested route families:
 - `GET /api/v1/businesses/:tenantId`
 - `GET /api/v1/subscriptions`
 - `GET /api/v1/entitlements`
-- `POST /api/v1/support-grants`
-- `POST /api/v1/support-grants/:grantId/revoke`
-- `GET /api/v1/support-activity`
 - `GET /api/v1/operators`
 - `GET /api/v1/audit-events`
 - `GET /api/v1/jobs`
@@ -70,7 +69,7 @@ S3 access is backend-only. Objects are private, namespaced, size and content-typ
 
 ## Observability and operations
 
-Use structured redacted logs, request IDs, metrics for authorization failures, grant creation, command latency, job age, retries, and notification outcomes. Health checks distinguish process readiness from dependency readiness. Alerts must not include secrets or raw personal data.
+Use structured redacted logs, request IDs, metrics for authorization failures, command latency, job age, retries, and notification outcomes. Health checks distinguish process readiness from dependency readiness. Alerts must not include secrets or raw personal data.
 
 ### Process lifecycle bounds
 
@@ -90,10 +89,10 @@ These are process-level HTTP lifecycle bounds. They do not replace timeouts on t
 
 ## Testing and release gates
 
-Required behavior tests include invalid and expired operator membership, role denial, support-grant scope and expiry, unknown enum rejection, malformed provider response handling, sequential duplicate commands, concurrent duplicate commands, and audit creation. Integration tests use a real Neon-compatible Postgres environment before production certification.
+Required behavior tests include invalid and expired operator membership, role denial, unknown enum rejection, malformed provider response handling, sequential duplicate commands, concurrent duplicate commands, and audit creation. Integration tests use a real Neon-compatible Postgres environment before production certification.
 
 Every change must pass formatting, lint, typecheck, unit tests, integration tests where applicable, build, and `git diff --check`. Database or authorization changes require a reviewer familiar with the business contracts and a documented rollback or forward-fix plan.
 
 ## Phased implementation
 
-Implement the foundation first, then read-only projections, then support and operator commands, then operational controls and hardening. Do not add tenant replication, unrestricted customer search, or direct mutation shortcuts to accelerate an early phase.
+Implement the foundation first, then read-only projections, then operator commands, then operational controls and hardening. Do not add tenant replication, unrestricted customer search, or direct mutation shortcuts to accelerate an early phase.

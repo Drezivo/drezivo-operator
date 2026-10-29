@@ -23,7 +23,7 @@ Every request requires a valid internal Clerk identity, active operator membersh
 | `GET /api/v1/subscriptions` | `subscription.read` |
 | `GET /api/v1/businesses/:tenantId/entitlements` | `entitlement.read` |
 
-The route checks permission before invoking the business read adapter. Support grants do not implicitly grant either permission. A role or permission unknown to the current contract fails closed. Authorization errors use the existing generic envelope and do not reveal whether a tenant or subscription exists.
+The route checks permission before invoking the business read adapter. The retired support-grant mechanism does not grant either billing permission. A role or permission unknown to the current contract fails closed. Authorization errors use the existing generic envelope and do not reveal whether a tenant or subscription exists.
 
 ## Subscription list
 

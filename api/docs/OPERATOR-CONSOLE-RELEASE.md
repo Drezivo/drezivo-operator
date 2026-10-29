@@ -1,5 +1,7 @@
 # Coordinated operator console release
 
+> **Historical rollout plan:** This runbook describes the earlier support-workspace rollout. Operator support-grant, support-activity, and workspace administration were retired by [ADR 0028](adr/0028-retire-operator-support-access.md). Do not use the workspace mutation or grant-revocation checks below for current releases. This repository change does not alter business migrations, grant records, or business authorization.
+
 The full operator console requires a business database rollout and an operator API release
 before its frontend is promoted. Merging the operator repository alone is insufficient.
 The known GitHub Production integration deploys the frontend through Vercel. No operator API
@@ -34,10 +36,10 @@ to newly enabled console tabs.
 3. Release the operator API from the reviewed operator commit through its existing host.
    Retain the current verified TLS database connection, CA file, exact CORS origins and Clerk
    organization. No credential rotation or hosted account modification is part of this release.
-4. Verify API liveness/readiness and authenticated read-only routes. Use a disposable support
-   workspace for mutation checks; do not alter a real client's trial, billing or inventory to test.
-5. Promote the matching operator frontend commit on Vercel. Verify sign-in, the two Superadmins,
-   business selection, subscription dates, readable permissions, audit filters and grant revocation.
+4. Verify API liveness/readiness and authenticated routes using approved operator permissions.
+   Do not alter a real client's trial, billing or inventory to test.
+5. Promote the matching operator frontend commit on Vercel. Verify sign-in, business selection,
+   subscription dates, and audit filters.
 6. Record the exact API/frontend commit and database migration versions. Confirm that legacy
    merchant activity is excluded from operator views while source audit records remain intact.
 
@@ -60,8 +62,8 @@ needed to publish this code. Free upgrades remain queued until that worker activ
 
 Local verification: 224 API tests, 136 frontend tests, 48 real PostgreSQL integration tests,
 34 HTTP/database smoke checks, typecheck, API lint, both builds and source secret scanning.
-Desktop support access was exercised in the browser. Final mobile, dark-mode and keyboard
-visual checks remain outstanding because the browser connection was unavailable.
+The former support-access UI was exercised in the browser. Final mobile, dark-mode and keyboard
+visual checks from that rollout remain historical; they do not validate the current console.
 
 If a release fails, restore the previous API and frontend commits together. Retain the additive
 business migrations and audit history while investigating; do not drop shared functions, indexes

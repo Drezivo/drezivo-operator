@@ -1,6 +1,6 @@
 # ADR 0007: Support grant command boundary
 
-**Status:** Proposed for review
+**Status:** Superseded by ADR 0028 (2026-10-26); retained as a historical decision record.
 **Date:** 2026-09-17
 
 ## Context

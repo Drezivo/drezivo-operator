@@ -14,7 +14,7 @@ The Next.js App Router selects each page. The console route layout stays mounted
 | `src/shared/navigation/` | Navigation metadata and URL builders |
 | `src/shared/ui/` and `src/shared/lib/` | Reusable UI and formatting |
 
-Route pages import feature entry components directly. The shell does not select feature components or own business data. Shared code does not import feature modules. Features may consume another feature's named capability, such as payment review or temporary workspace access inside client details.
+Route pages import feature entry components directly. The shell does not select feature components or own business data. Shared code does not import feature modules. Features may consume another feature's named capability, such as payment review inside client details.
 
 ## Routes
 
@@ -36,7 +36,7 @@ Route pages import feature entry components directly. The shell does not select 
 
 The `(console)` route group adds no URL segment. Sign-in remains outside the console shell. `NEXT_PUBLIC_OPERATOR_VIEWS` controls both navigation and direct access; disabled pages do not mount data-fetching children. Configuration resource IDs remain stable.
 
-`?view=` no longer selects pages and has no redirects. Existing query-view bookmarks open Overview at `/`. Client `tab` and `filter`, analytics `months`, audit `actor`, and detail `workspaceGrant` remain query state. Client and read-only business IDs are path segments.
+`?view=` no longer selects pages and has no redirects. Existing query-view bookmarks open Overview at `/`. Client `tab` and `filter`, analytics `months`, and audit `actor` remain query state. Client and read-only business IDs are path segments.
 
 ## Data and session flow
 

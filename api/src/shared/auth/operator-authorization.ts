@@ -13,10 +13,9 @@ export type OperatorRole = z.infer<typeof operatorRoleSchema>;
 
 export const rolePermissions: Readonly<Record<OperatorRole, readonly OperatorPermission[]>> = {
   platform_owner: [
-    'operator.overview.read', 'business.summary.read', 'audit.read', 'operator.directory.read', 'support.activity.read',
-    'subscription.read', 'entitlement.read', 'platform.analytics.read', 'job.read', 'notification.read', 'support.grant.create', 'support.grant.revoke',
+    'operator.overview.read', 'business.summary.read', 'audit.read', 'operator.directory.read',
+    'subscription.read', 'entitlement.read', 'platform.analytics.read', 'job.read', 'notification.read',
     'job.retry', 'notification.retry', 'tenant.admin.read', 'tenant.admin.manage',
-    'workspace.access', 'workspace.read', 'workspace.repair',
   ],
   // Kept as denied legacy wire values; only Superadmin is enabled for this phase.
   platform_operator: [], support_operator: [], billing_operator: [], read_only_operator: [],

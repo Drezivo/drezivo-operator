@@ -4,7 +4,6 @@ import { clerkContextMiddleware, errorHandler, noStore, notFound, requestId, req
 import { isProcessReady } from "./shared/lifecycle/process-lifecycle.js";
 import { createRateLimitMiddleware } from "./shared/http/rate-limit.js";
 import { createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from "./shared/auth/operator-authorization.js";
-import { createWorkspaceRouter } from "./features/support-access/workspace/index.js";
 import { createSessionWebhookRouter } from "./features/sessions/webhook-routes.js";
 import type { ConsolePorts } from "./infrastructure/db/console-ports.js";
 import { createOperatorConsoleRouter } from "./features/sessions/index.js";
@@ -16,7 +15,6 @@ import { createOperatorAnalyticsRouter, unavailableAnalyticsReadPort } from "./f
 import { createOperatorAuditRouter, unavailableAuditPort } from "./features/audit-logs/index.js";
 import { createOperatorDirectoryRouter, unavailableOperatorDirectoryPort } from "./features/operators/index.js";
 import { createOperatorOperationsRouter, unavailableOperationsPort } from "./features/operations/index.js";
-import { createOperatorSupportGrantRouter, unavailableSupportGrantCommandPort } from "./features/support-access/index.js";
 import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from "./features/operations/retry/index.js";
 import { createOperatorTenantAdminRouter, unavailableTenantAdminPort, type TenantAdminPort, type ProofLinkSigner } from "./features/clients/administration/index.js";
 import { createSubscriptionAdministrationRouter } from './features/subscriptions/administration-routes.js';
@@ -106,7 +104,6 @@ export function createApp(dependencies: OperatorAppDependencies = {}) {
   app.use(express.json({ limit: '1mb' }));
   app.get('/operator/health', requireAuthorizedOperator, (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
   const permissionMiddleware = createPermissionMiddleware(authorizationPort, consolePorts.session?.recordDecision);
-  app.use('/api/v1', createWorkspaceRouter(consolePorts.workspace, requireAuthorizedOperator, permissionMiddleware));
   app.use('/api/v1', createOperatorConsoleRouter(consolePorts, requireAuthorizedOperator, permissionMiddleware));
   app.use('/api/v1', createOperatorReadRouter(consolePorts.read ?? unavailableReadPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOverviewRouter(consolePorts.read ?? unavailableReadPort, requireAuthorizedOperator, { permissionMiddleware }));
@@ -116,7 +113,6 @@ export function createApp(dependencies: OperatorAppDependencies = {}) {
   app.use('/api/v1', createOperatorAuditRouter(consolePorts.audit ?? unavailableAuditPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorDirectoryRouter(consolePorts.directory ?? unavailableOperatorDirectoryPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorOperationsRouter(consolePorts.operations ?? unavailableOperationsPort, requireAuthorizedOperator, { permissionMiddleware }));
-  app.use('/api/v1', createOperatorSupportGrantRouter(consolePorts.grants ?? unavailableSupportGrantCommandPort, requireAuthorizedOperator, { permissionMiddleware, grantList: consolePorts.grantList }));
   app.use('/api/v1', createOperatorRetryRouter(consolePorts.retry ?? unavailableOperationsRetryCommandPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createOperatorTenantAdminRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware, directory: businessUserDirectory, proofLink }));
   app.use('/api/v1', createSubscriptionAdministrationRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware }));

@@ -89,7 +89,6 @@ export function OverviewPanel({ data, onKeepSidebarScroll = () => {} }: { data: 
         <CountList values={[
           { label: "Failed jobs", value: attention?.failed_jobs },
           { label: "Failed notifications", value: attention?.failed_notifications },
-          { label: "Active support grants", value: attention?.active_support_grants },
         ]} />
       </div>
     </section>

@@ -8,9 +8,10 @@ const overview = {
   as_of: iso,
   businesses: { total: 1, by_status: [{ status: 'active', count: 1 }, { status: 'restricted', count: 0 }, { status: 'cancelled', count: 0 }] },
   subscriptions: { active: 1, trial: 0, grace: 0, past_due: 0, restricted: 0, cancelled: 0, missing: 0, lifecycle: { expired_trials: 0, expired_grace: 0, incomplete_trials: 0, incomplete_grace: 0 } },
-  attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 0 },
+  attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 2 },
   recent_businesses: [],
 };
+const operatorOverview = { ...overview, attention: { failed_jobs: 0, failed_notifications: 0 } };
 const secret = 'test-assertion-secret-with-more-than-32-bytes';
 const principal: SafeOperatorPrincipal = { clerkUserId: 'user_clerk_123', operatorOrganizationId: 'org_operator_exact', roles: ['read_only_operator'], requestId: 'req-1' };
 const ownerPrincipal: SafeOperatorPrincipal = { clerkUserId: 'user_clerk_123', operatorOrganizationId: 'org_operator_exact', roles: ['platform_owner'], requestId: 'req-1' };
@@ -42,7 +43,7 @@ describe('business read adapter', () => {
       expect(new URL(String(url)).search).toBe('');
       return response({ success: true, data: overview, request_id: 'req-1' });
     });
-    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async (requestId) => { authenticatedRequestId = requestId; return 'Bearer internal'; }, operatorAssertionSecret: secret, fetchImpl }).overview(overviewInput)).resolves.toEqual(overview); expect(authenticatedRequestId).toBe('req-1');
+    await expect(createBusinessReadAdapter({ baseUrl: 'https://business.test', serviceAuth: async (requestId) => { authenticatedRequestId = requestId; return 'Bearer internal'; }, operatorAssertionSecret: secret, fetchImpl }).overview(overviewInput)).resolves.toEqual(operatorOverview); expect(authenticatedRequestId).toBe('req-1');
   });
 
   it('rejects flattened subscription lifecycle counts that do not match the shared contract', async () => {

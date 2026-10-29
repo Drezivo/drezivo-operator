@@ -1,6 +1,6 @@
 # Business contract gap register
 
-**Status:** Open review register
+**Status:** Historical review register; the related operator support-activity API was retired by ADR 0028 on 2026-10-26.
 **Scope:** Evidence and unresolved contracts between the business API data model and the operator support activity projection
 **Database impact in this repository:** None
 

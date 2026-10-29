@@ -6,7 +6,6 @@ export const resources = [
   { id: "subscriptions", label: "Subscriptions", group: "Commercial", path: "/subscriptions" },
   { id: "entitlements", label: "Assigned plans", group: "Commercial", path: "/assigned-plans" },
   { id: "operators", label: "Operators", group: "Access and support", path: "/operators" },
-  { id: "grants", label: "Support access", group: "Access and support", path: "/support-access" },
   { id: "support", label: "Operator activity", group: "Access and support", path: "/operator-activity" },
   { id: "audit", label: "Audit log", group: "Access and support", path: "/audit-log" },
   { id: "jobs", label: "Background jobs", group: "Delivery and integrations", path: "/background-jobs" },
@@ -22,7 +21,7 @@ export type ResourceId = typeof resources[number]["id"];
  * endpoints to be live, so views are enabled version by version with NEXT_PUBLIC_OPERATOR_VIEWS
  * (comma-separated ids, for example "clients,operators"). Unknown ids are ignored.
  */
-export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["overview", "analytics", "clients", "subscriptions", "entitlements", "operators", "grants", "audit", "jobs", "notifications", "payments", "payment-methods"];
+export const DEFAULT_OPERATOR_VIEWS: readonly ResourceId[] = ["overview", "analytics", "clients", "subscriptions", "entitlements", "operators", "audit", "jobs", "notifications", "payments", "payment-methods"];
 
 export function enabledResourceIds(configured: string | undefined = process.env.NEXT_PUBLIC_OPERATOR_VIEWS): ResourceId[] {
   const known = new Set<string>(resources.map((resource) => resource.id));
@@ -47,7 +46,6 @@ export const resourceHelp: Record<ResourceId, string> = {
   support: "Operator actions across the platform. Merchant and front-desk activity is excluded.",
   jobs: "Background job status and retry controls.",
   notifications: "Delivery status and retry controls.",
-  grants: "Choose a business and permissions, open temporary workspace access, and revoke it when support is finished.",
   payments: "Subscription payment proofs sent by business owners. Check the reference against the account, then approve or reject. Reviews are audited and owner notifications are queued.",
   "payment-methods": "Where businesses pay Drezivo: the GCash, Maya or bank accounts and QR codes shown in their Subscribe dialog.",
 };

@@ -66,7 +66,7 @@ function overviewEnvelope(recentBusinessName?: string, requestId = "req_overview
       as_of: "2026-09-25T00:00:00Z",
       businesses: { total: 0, by_status: [] },
       subscriptions: { active: 0, trial: 0, grace: 0, past_due: 0, restricted: 0, cancelled: 0, missing: 0, lifecycle: {} },
-      attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 0 },
+      attention: { failed_jobs: 0, failed_notifications: 0 },
       recent_businesses: recentBusinessName ? [{
         id: "00000000-0000-4000-8000-000000000003",
         name: recentBusinessName,
@@ -468,7 +468,7 @@ describe("App Router console pages", () => {
       as_of: "2026-09-25T00:00:00Z",
       businesses: { total: 1, by_status: [{ status: "active", count: 1 }, { status: "restricted", count: 0 }, { status: "cancelled", count: 0 }] },
       subscriptions: { active: 0, trial: 0, grace: 0, past_due: 0, restricted: 0, cancelled: 0, missing: 0, lifecycle: { expired_trials: 0, expired_grace: 0, incomplete_trials: 0, incomplete_grace: 0 } },
-      attention: { failed_jobs: 0, failed_notifications: 0, active_support_grants: 0 },
+      attention: { failed_jobs: 0, failed_notifications: 0 },
       recent_businesses: [{ id: "00000000-0000-4000-8000-000000000002", name: "Stale overview", slug: "stale", status: "active", created_at: "2026-09-24T00:00:00Z" }],
     };
     await act(async () => { finishOldRefresh?.(responseEnvelope(staleOverview, "req_stale_test")); });

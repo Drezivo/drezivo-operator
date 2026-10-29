@@ -47,7 +47,7 @@ For a local-only listener, set `OPERATOR_API_HOST=127.0.0.1` in the process envi
 - `docs/READ-ONLY-BILLING-DESIGN.md` and `docs/adr/0016-billing-read-adapter-transport.md` define the subscription and entitlement read adapter.
 - `docs/READ-ONLY-AUDIT-DESIGN.md` and `docs/adr/0017-audit-read-adapter-transport.md` define the audit-event read adapter.
 - `docs/READ-ONLY-OPERATOR-DIRECTORY-DESIGN.md` and `docs/adr/0018-operator-directory-read-adapter-transport.md` define the Admin Team directory read adapter.
-- `docs/READ-ONLY-SUPPORT-ACTIVITY-DESIGN.md` defines the request-correlated support activity route and its blocked transport contract.
+- `docs/READ-ONLY-SUPPORT-ACTIVITY-DESIGN.md` is a historical design for the retired support-activity route; see [ADR 0028](docs/adr/0028-retire-operator-support-access.md).
 - `docs/BUSINESS-CONTRACT-GAP-REGISTER.md` records unresolved business data and wire-contract decisions blocking support activity integration.
 - `docs/READ-ONLY-OPERATIONS-DESIGN.md` and `docs/adr/0015-operations-read-adapter-transport.md` define the jobs and notifications read adapter.
 - `docs/adr/0001-operator-control-plane-boundary.md` records the authority decision.

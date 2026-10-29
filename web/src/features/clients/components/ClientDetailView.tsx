@@ -10,13 +10,12 @@ import { formatManila, manilaDateInput, endOfManilaDay } from "@/shared/lib/form
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "@/shared/ui/StatePanels";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
 import { PaymentReviewList } from "@/features/payments/components/PaymentReview";
-import { WorkspacePanel } from "@/features/support-access/components/WorkspacePanel";
 import { ActionCard, BackButton, MemberRow, NotesSection } from "./ClientActions";
 
 type Notice = { message: string; requestId: string } | null;
 function asApiError(error: unknown): ApiError { return error instanceof ApiError ? error : new ApiError("An unexpected error occurred.", "http"); }
 
-export function ClientDetailView({ tenantId, token, onBack, workspaceGrantId }: { workspaceGrantId?: string | null; tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onBack: () => void }) {
+export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onBack: () => void }) {
   const [detail, load, replaceDetail] = useCachedLoad<ClientDetail>(clientPaths.detail(tenantId), token);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -57,7 +56,11 @@ export function ClientDetailView({ tenantId, token, onBack, workspaceGrantId }: 
   const canSetTrial = subscription !== null && subscription.plan_code !== "free" && subscription.status !== "active" && subscription.status !== "cancelled";
   const canExtendViewOnly = state === "view_only" || state === "expired";
   const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
-  const trialDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.trial_ends_at ? new Date(subscription.trial_ends_at).getTime() : 0)), 7);
+  const now = Date.now();
+  const currentTrialEnd = subscription?.trial_ends_at ? new Date(subscription.trial_ends_at).getTime() : Number.NaN;
+  const trialDefault = currentTrialEnd > now
+    ? manilaDateInput(new Date(currentTrialEnd), 0)
+    : manilaDateInput(new Date(now), 7);
   const paidDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.status === "active" && subscription.current_period_end ? new Date(subscription.current_period_end).getTime() : 0)), 30);
 
   return <div className="clients client-detail">
@@ -70,7 +73,6 @@ export function ClientDetailView({ tenantId, token, onBack, workspaceGrantId }: 
     {notice && <p className="action-success" role="status"><CheckCircle size={16} />{notice.message}<RequestId requestId={notice.requestId} /></p>}
     {error && <StatePanel error={error} dependency="Business API" onRetry={() => setError(null)} />}
 
-    <WorkspacePanel initialGrantId={workspaceGrantId} key={tenantId} tenantId={tenantId} businessName={client.name} token={token} />
     <div className="client-layout">
       <div className="client-main">
         <section className="panel">

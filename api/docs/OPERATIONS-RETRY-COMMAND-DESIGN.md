@@ -21,7 +21,7 @@ Both routes are protected `POST` commands under `/api/v1`:
 | `POST /api/v1/jobs/:jobId/retry` | `job.retry` | `outbox_event.id` / job identifier | `dead` only; the authority may also permit an expired `leased` row after reconciliation |
 | `POST /api/v1/notifications/:deliveryId/retry` | `notification.retry` | `notification_delivery.id` | `failed` or `bounced` only; `provider_accepted` and `delivered` must not be resent by default |
 
-The route parameter is a UUID. The permission is checked on the server after Clerk identity and active internal membership are verified. A tenant scope, when required by the authority, is resolved from the target record by the business command and is never accepted as an untrusted authorization override from the body. A support grant may narrow the operator's existing scope but cannot create either retry permission or global access.
+The route parameter is a UUID. The permission is checked on the server after Clerk identity and active internal membership are verified. A tenant scope, when required by the authority, is resolved from the target record by the business command and is never accepted as an untrusted authorization override from the body. Retired support grants do not provide retry permission or scope.
 
 These state choices are proposed defaults, not an implementation license. The business API owners must confirm whether an expired lease, a provider-uncertain notification, or another terminal state can be retried safely. Unknown states fail closed.
 
@@ -110,7 +110,7 @@ Implementation remains blocked behind these explicit answers from the business A
 1. What are the exact internal command paths and authentication mechanism for each retry operation?
 2. Is a retry a new outbox/job row, a conditional transition of the existing row, or a domain-specific command that may reuse either?
 3. Which source states are eligible, including expired leases and provider-uncertain notifications?
-4. What are the exact permission codes, role assignments, tenant-scope rules, and support-grant requirements?
+4. What are the exact permission codes, role assignments, and tenant-scope rules?
 5. What is the canonical request and response schema, including maximum reason length and whether `audit_event_id` is returned?
 6. Which errors conceal target existence, and which stable error codes apply to ineligible or already processed targets?
 7. How are provider idempotency keys and notification reconciliation handled to avoid duplicate delivery?

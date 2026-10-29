@@ -17,4 +17,3 @@ export type SessionAuditPort = {
     isKnown(subject: string, sessionId: string): Promise<boolean>;
     isEnded(subject: string, sessionId: string): Promise<boolean>;
 };
-export type { GrantListPort } from '../support-access/contracts.js';

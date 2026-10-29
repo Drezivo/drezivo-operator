@@ -1,7 +1,9 @@
 # Read-only support activity design
 
-**Status:** Request-correlated route boundary implemented; transport adapter blocked pending source and wire-contract approval
+**Status:** Retired by ADR 0028 on 2026-10-26. This is a historical design; no operator route or transport adapter is mounted.
 **Scope:** Backend read projection for the internal Support Activity view
+
+The route and projection specifications below are retained for historical context only. They do not authorize rebuilding support activity.
 
 ## Purpose
 

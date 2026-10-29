@@ -47,13 +47,13 @@ Responses are generic and do not reveal whether a tenant exists or why a scope d
 
 ## Authority and support access
 
-The resolver must use the approved Drezivo authorization source. It should evaluate the operator's assigned scope and, where the route permits temporary access, the current support grant, permission, start time, expiry, and revocation state. A support grant can narrow an existing operator permission; it cannot create a global bypass.
+The resolver must use the approved Drezivo authorization source. No current operator route accepts a support grant. Any future scope mechanism must be approved separately and cannot create a global bypass or replace business authorization.
 
 Business commands must repeat the scope and lifecycle check inside their authoritative transaction. The operator API middleware is an early boundary, not a substitute for business authorization.
 
 ## Database impact
 
-None. This change adds no table, migration, index, cache, connection, or local tenant-scope mirror. Any future operator assignment or support-grant persistence remains owned by the business platform and requires its own schema and security review.
+None. This change adds no table, migration, index, cache, connection, or local tenant-scope mirror. Any future operator assignment or support-access persistence remains owned by the business platform and requires its own schema and security review.
 
 ## Verification
 
