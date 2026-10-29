@@ -53,6 +53,9 @@ export function startServer(port = config.PORT): http.Server {
     const host = address && typeof address === 'object' ? address.address : config.OPERATOR_API_HOST;
     const boundPort = address && typeof address === 'object' ? address.port : port;
     logger.info({ event: 'api.server.listening', host, port: boundPort }, 'API server is listening');
+    if (process.env.OPERATOR_DEV_STARTUP_NOTIFY === '1' && process.connected && process.send) {
+      process.send({ event: 'api.server.listening' }, () => {});
+    }
   });
   return server;
 }

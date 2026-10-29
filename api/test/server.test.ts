@@ -68,6 +68,12 @@ describe('server lifecycle', () => {
     const sigintListeners = new Set(process.listeners('SIGINT'));
     vi.stubEnv('NODE_ENV', 'test');
     vi.stubEnv('OPERATOR_API_HOST', '127.0.0.1');
+    vi.stubEnv('OPERATOR_DEV_STARTUP_NOTIFY', '1');
+    const sendDescriptor = Object.getOwnPropertyDescriptor(process, 'send');
+    const connectedDescriptor = Object.getOwnPropertyDescriptor(process, 'connected');
+    const send = vi.fn();
+    Object.defineProperty(process, 'send', { configurable: true, value: send });
+    Object.defineProperty(process, 'connected', { configurable: true, value: true });
     vi.resetModules();
     const { startServer: startConfiguredServer } = await import('../src/server.js');
     const { logger: serverLogger } = await import('../src/shared/logging/logger.js');
@@ -88,9 +94,14 @@ describe('server lifecycle', () => {
         host: address.address,
         port: address.port,
       }, 'API server is listening');
+      expect(send).toHaveBeenCalledWith({ event: 'api.server.listening' }, expect.any(Function));
       expect(isProcessReady()).toBe(true);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+      if (sendDescriptor) Object.defineProperty(process, 'send', sendDescriptor);
+      else Reflect.deleteProperty(process, 'send');
+      if (connectedDescriptor) Object.defineProperty(process, 'connected', connectedDescriptor);
+      else Reflect.deleteProperty(process, 'connected');
       for (const listener of process.listeners('SIGTERM')) {
         if (!sigtermListeners.has(listener)) process.removeListener('SIGTERM', listener);
       }
