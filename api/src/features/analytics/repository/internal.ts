@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AppError } from '../../../shared/http/errors.js';
+import { AppError, remapDependencyError } from '../../../shared/http/errors.js';
 import { createInternalServiceClient, type InternalServiceClient } from '../../../infrastructure/http/internal-service-client.js';
 import { createOperatorReadAssertion } from '../../../shared/auth/operator-read-assertion.js';
 import {
@@ -23,7 +23,10 @@ const responseEnvelope = z.object({
   data: z.unknown(),
   request_id: z.string().min(1).max(128),
 }).strict();
-const dependencyError = (code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string) => new AppError(503, code, message);
+const dependencyError = (code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string, cause?: unknown) => {
+  const diagnostics = { dependency: 'internal_service' as const, reason: code === 'DEPENDENCY_INVALID_RESPONSE' ? 'invalid_response' as const : 'dependency_unavailable' as const };
+  return cause === undefined ? new AppError(503, code, message, { diagnostics }) : remapDependencyError(cause, { code, message, diagnostics });
+};
 
 export function createAnalyticsReadAdapter(options: AnalyticsReadAdapterOptions): AnalyticsReadPort {
   const client: InternalServiceClient = createInternalServiceClient({
@@ -50,9 +53,9 @@ export function createAnalyticsReadAdapter(options: AnalyticsReadAdapterOptions)
       } catch (cause) {
         if (cause instanceof AppError && cause.code === 'OPERATOR_AUTH_UNAVAILABLE') throw cause;
         if (cause instanceof AppError && cause.code === 'DEPENDENCY_INVALID_RESPONSE') {
-          throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The analytics read service returned an invalid response.');
+          throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The analytics read service returned an invalid response.', cause);
         }
-        throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The analytics read service is unavailable.');
+        throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The analytics read service is unavailable.', cause);
       }
       if (response.status !== 200 || response.data === null) {
         throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The analytics read service is unavailable.');

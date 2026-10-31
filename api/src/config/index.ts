@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import { resolveOperatorCorsOrigins } from './operator-cors-origins.js';
 import { isAllowedDevelopmentLoopbackHttpUrl } from '../infrastructure/http/internal-service-transport.js';
+import { logStartupFailure } from '../shared/logging/failure-diagnostics.js';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -110,7 +111,16 @@ export function resolveClerkEnvironment(environment: Environment): {
   };
 }
 
-const clerkEnvironment = resolveClerkEnvironment(process.env);
+let clerkEnvironment: ReturnType<typeof resolveClerkEnvironment>;
+try {
+  clerkEnvironment = resolveClerkEnvironment(process.env);
+} catch (error) {
+  logStartupFailure(error, {
+    phase: 'environment_validation', dependency: 'operator_auth', reason: 'configuration_conflict',
+    configurationKeys: ['CLERK_SECRET_KEY', 'CLERK_PUBLISHABLE_KEY', 'NEXT_CLERK_SECRET_KEY', 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY'],
+  });
+  throw new Error('Invalid Clerk environment configuration.');
+}
 for (const [name, value] of Object.entries(clerkEnvironment)) {
   if (value !== undefined) process.env[name] = value;
 }
@@ -118,12 +128,19 @@ for (const [name, value] of Object.entries(clerkEnvironment)) {
 const parsedConfig = schema.safeParse({ ...process.env, ...clerkEnvironment });
 if (!parsedConfig.success) {
   const invalidNames = [...new Set(parsedConfig.error.issues.map((issue) => String(issue.path[0] ?? 'configuration')))];
+  logStartupFailure(new Error('Environment validation failed.'), {
+    phase: 'environment_validation', reason: 'invalid_configuration', configurationKeys: invalidNames,
+  });
   throw new Error(`Invalid environment configuration for: ${invalidNames.join(', ')}.`);
 }
-export const config = {
-  ...parsedConfig.data,
-  OPERATOR_CORS_ORIGINS: resolveOperatorCorsOrigins(parsedConfig.data.OPERATOR_CORS_ORIGINS, parsedConfig.data.NODE_ENV),
-};
+let resolvedCorsOrigins: string[];
+try {
+  resolvedCorsOrigins = resolveOperatorCorsOrigins(parsedConfig.data.OPERATOR_CORS_ORIGINS, parsedConfig.data.NODE_ENV);
+} catch (error) {
+  logStartupFailure(error, { phase: 'environment_validation', reason: 'invalid_configuration', configurationKeys: ['OPERATOR_CORS_ORIGINS'] });
+  throw new Error('Invalid operator CORS configuration.');
+}
+export const config = { ...parsedConfig.data, OPERATOR_CORS_ORIGINS: resolvedCorsOrigins };
 
 export function isClerkConfigured(): boolean {
   return Boolean(config.CLERK_SECRET_KEY && config.CLERK_PUBLISHABLE_KEY && config.OPERATOR_CLERK_ORGANIZATION_ID);

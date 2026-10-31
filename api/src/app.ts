@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type RequestHandler } from "express";
 import helmet from "helmet";
-import { clerkContextMiddleware, errorHandler, noStore, notFound, requestId, requireOperator } from "./shared/http/middleware.js";
+import { clerkContextMiddleware, errorHandler, noStore, notFound, recordRoutePrefix, requestId, requireOperator } from "./shared/http/middleware.js";
 import { isProcessReady } from "./shared/lifecycle/process-lifecycle.js";
 import { createRateLimitMiddleware } from "./shared/http/rate-limit.js";
 import { createPermissionMiddleware, denyAuthorizationPort, type AuthorizationPort } from "./shared/auth/operator-authorization.js";
@@ -98,8 +98,8 @@ export function createApp(dependencies: OperatorAppDependencies = {}) {
   app.get('/health', (_req, res) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));
   app.get('/ready', (_req, res) => res.set('Cache-Control', 'no-store').status(isProcessReady() ? 200 : 503).json({ status: isProcessReady() ? 'ready' : 'draining' }));
 
-  app.use('/operator', noStore, protectedRateLimit, (authentication ? (_req, _res, next) => next() : clerkContextMiddleware()));
-  app.use('/api/v1', noStore, protectedRateLimit, (authentication ? (_req, _res, next) => next() : clerkContextMiddleware()));
+  app.use('/operator', recordRoutePrefix('/operator'), noStore, protectedRateLimit, (authentication ? (_req, _res, next) => next() : clerkContextMiddleware()));
+  app.use('/api/v1', recordRoutePrefix('/api/v1'), noStore, protectedRateLimit, (authentication ? (_req, _res, next) => next() : clerkContextMiddleware()));
   app.use(createSessionWebhookRouter(consolePorts.session, clerkWebhookSigningSecret, createRateLimitMiddleware()));
   app.use(express.json({ limit: '1mb' }));
   app.get('/operator/health', requireAuthorizedOperator, (_req: Request, res: Response) => res.set('Cache-Control', 'no-store').status(200).json({ status: 'ok' }));

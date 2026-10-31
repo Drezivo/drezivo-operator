@@ -21,7 +21,9 @@ export function createOperatorDirectory(secretKey: string, organizationId: strin
                 if (offset >= page.totalCount)
                     break;
                 if (page.data.length === 0 || offset > 1000)
-                    throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator directory is too large to read safely.');
+                    throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator directory is too large to read safely.', {
+                        diagnostics: { dependency: 'operator_auth', reason: 'invalid_response' },
+                    });
             }
             const rows = all.filter(x => (!filters.role || x.role === filters.role) && (!filters.status || x.status === filters.status)).sort((a, b) => a.operator_id.localeCompare(b.operator_id)).filter(x => !cursor || x.operator_id > cursor.operatorId);
             const items = rows.slice(0, limit), last = items.at(-1);

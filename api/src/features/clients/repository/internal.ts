@@ -1,4 +1,4 @@
-import { AppError } from '../../../shared/http/errors.js';
+import { AppError, remapDependencyError } from '../../../shared/http/errors.js';
 import {
   businessDetailSchema,
   businessSummarySchema,
@@ -60,8 +60,11 @@ function decodeUpstreamCursor(value: string): { createdAt: string; tenantId: str
   } catch { throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The business read service returned an invalid response.'); }
 }
 
-function dependencyError(code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string): AppError {
-  return new AppError(503, code, message);
+function dependencyError(code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string, cause?: unknown): AppError {
+  const diagnostics = { dependency: 'internal_service' as const, reason: code === 'DEPENDENCY_INVALID_RESPONSE' ? 'invalid_response' as const : 'dependency_unavailable' as const };
+  return cause === undefined
+    ? new AppError(503, code, message, { diagnostics })
+    : remapDependencyError(cause, { code, message, diagnostics });
 }
 
 export function createBusinessReadAdapter(options: BusinessReadAdapterOptions): ReadPort {
@@ -72,8 +75,8 @@ export function createBusinessReadAdapter(options: BusinessReadAdapterOptions): 
     try { response = await client.requestJsonResponse<unknown>(fullPath, { requestId, operatorAssertion }); }
     catch (error) {
       if (error instanceof AppError && error.code === 'OPERATOR_AUTH_UNAVAILABLE') throw error;
-      if (error instanceof AppError && error.code === 'DEPENDENCY_INVALID_RESPONSE') throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The business read service returned an invalid response.');
-      throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.');
+      if (error instanceof AppError && error.code === 'DEPENDENCY_INVALID_RESPONSE') throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The business read service returned an invalid response.', error);
+      throw dependencyError('DEPENDENCY_UNAVAILABLE', 'The business read service is unavailable.', error);
     }
     if (response.data === null) return null;
     const envelope = envelopeSchema.safeParse(response.data);

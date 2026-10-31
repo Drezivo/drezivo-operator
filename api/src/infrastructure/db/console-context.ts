@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { AppError } from '../../shared/http/errors.js';
+import { postgresFailureReason } from '../../shared/logging/failure-diagnostics.js';
 import type { TenantAdminDbOptions } from '../../features/clients/repository/admin.js';
 
 export type ConsoleDbContext = {
@@ -20,13 +21,20 @@ export function createConsoleDbContext(options: TenantAdminDbOptions): ConsoleDb
   });
 
   async function transaction<T>(subject: string, write: boolean, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-    const client = await pool.connect();
+    let client: pg.PoolClient | undefined;
     try {
+      client = await pool.connect();
       const role = (await client.query<{ rolsuper: boolean; rolbypassrls: boolean }>(
         'SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname=current_user',
       )).rows[0];
       if (!role || role.rolsuper || role.rolbypassrls) {
-        throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator database role is invalid.');
+        throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator database role is invalid.', {
+          diagnostics: {
+            dependency: 'tenant_admin_database', reason: 'unsafe_role',
+            configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'],
+            databaseRole: { superuser: role?.rolsuper === true, bypassRls: role?.rolbypassrls === true },
+          },
+        });
       }
 
       await client.query(write ? 'BEGIN' : 'BEGIN READ ONLY');
@@ -38,17 +46,27 @@ export function createConsoleDbContext(options: TenantAdminDbOptions): ConsoleDb
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
       const code = (error as { code?: string }).code;
-      if (code === '42501') throw new AppError(403, 'FORBIDDEN', 'The operator database action is not permitted.');
+      if (code === '42501') throw new AppError(403, 'FORBIDDEN', 'The operator database action is not permitted.', {
+        cause: error,
+        diagnostics: { dependency: 'tenant_admin_database', reason: 'permission_denied', configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'] },
+      });
       if (code === '23503') throw new AppError(409, 'STATE_CONFLICT', 'This record has linked data. Refresh and review its current state before continuing.');
       if (code === '23514' || code === '23502' || code === '22P02') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command contains invalid data.');
       if (code === '23505') throw new AppError(409, 'STATE_CONFLICT', 'This intent or resource state has changed. Refresh before trying again.');
       if (code === 'P0002') throw new AppError(404, 'NOT_FOUND', 'The resource was not found.');
       if (code === '22023') throw new AppError(400, 'VALIDATION_FAILED', 'The operator command is invalid.');
-      throw error;
+      if (error instanceof AppError) throw error;
+      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The operator database is temporarily unavailable.', {
+        cause: error,
+        diagnostics: {
+          dependency: 'tenant_admin_database', reason: postgresFailureReason(error),
+          configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'],
+        },
+      });
     } finally {
-      client.release();
+      client?.release();
     }
   }
 
@@ -70,7 +88,9 @@ export function createConsoleDbContext(options: TenantAdminDbOptions): ConsoleDb
     parse: (value: unknown) => T,
   ): Promise<{ items: T[]; more: boolean }> {
     const rows = await projection(resource, { ...filters, limit: limit + 1, ...(id ? { at, id } : {}) });
-    if (!Array.isArray(rows)) throw new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The operator projection is invalid.');
+    if (!Array.isArray(rows)) throw new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The operator projection is invalid.', {
+      diagnostics: { dependency: 'tenant_admin_database', reason: 'invalid_response' },
+    });
     return { items: rows.slice(0, limit).map(parse), more: rows.length > limit };
   }
 

@@ -95,7 +95,13 @@ export function mapClerkProviderError(error: unknown): AppError {
   if (status === 401 || status === 403 || /auth|token|session|jwt|credential|unauthor/.test(code)) {
     return new AppError(401, 'UNAUTHENTICATED', 'Authentication is required.');
   }
-  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator authentication is temporarily unavailable.');
+  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator authentication is temporarily unavailable.', {
+    cause: error,
+    diagnostics: {
+      dependency: 'operator_auth', reason: 'provider_unavailable',
+      ...(status ? { upstreamStatus: status } : {}),
+    },
+  });
 }
 
 function asProviderError(error: unknown): { status?: number; code?: string } {
@@ -119,7 +125,14 @@ export function requireOperator(options: ClerkContextOptions = {}): RequestHandl
       return;
     }
     if (!isClerkConfigured()) {
-      next(new AppError(503, 'OPERATOR_AUTH_NOT_CONFIGURED', 'Operator authentication is not configured.'));
+      const configurationKeys = [
+        ...(!config.CLERK_SECRET_KEY ? ['CLERK_SECRET_KEY'] : []),
+        ...(!config.CLERK_PUBLISHABLE_KEY ? ['CLERK_PUBLISHABLE_KEY'] : []),
+        ...(!config.OPERATOR_CLERK_ORGANIZATION_ID ? ['OPERATOR_CLERK_ORGANIZATION_ID'] : []),
+      ];
+      next(new AppError(503, 'OPERATOR_AUTH_NOT_CONFIGURED', 'Operator authentication is not configured.', {
+        diagnostics: { dependency: 'operator_auth', reason: 'not_configured', configurationKeys },
+      }));
       return;
     }
 

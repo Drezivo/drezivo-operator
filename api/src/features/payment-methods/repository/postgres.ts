@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { AppError } from '../../../shared/http/errors.js';
+import { postgresFailureReason } from '../../../shared/logging/failure-diagnostics.js';
 import {
   MAX_ACTIVE_PLATFORM_PAYMENT_METHODS,
   type PlatformPaymentCommandContext,
@@ -54,10 +55,13 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
   });
 
   async function transaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-    const client = await pool.connect();
+    let client: pg.PoolClient | undefined;
     try {
+      client = await pool.connect();
       const role=(await client.query<{rolsuper:boolean;rolbypassrls:boolean}>('SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
-      if(!role||role.rolsuper||role.rolbypassrls)throw new AppError(503,'DEPENDENCY_UNAVAILABLE','The operator database role is invalid.');
+      if(!role||role.rolsuper||role.rolbypassrls)throw new AppError(503,'DEPENDENCY_UNAVAILABLE','The operator database role is invalid.',{
+        diagnostics:{dependency:'tenant_admin_database',reason:'unsafe_role',configurationKeys:['OPERATOR_TENANT_ADMIN_DATABASE_URL'],databaseRole:{superuser:role?.rolsuper===true,bypassRls:role?.rolbypassrls===true}},
+      });
       await client.query('BEGIN');
       // Business migration 0064 lets drezivo_app write Drezivo's payment methods only in an
       // explicit operator context; without it every create and update is refused by RLS.
@@ -69,10 +73,14 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
+      if(client)await client.query('ROLLBACK').catch(() => undefined);
+      if(error instanceof AppError)throw error;
+      throw new AppError(503,'DEPENDENCY_UNAVAILABLE','The operator database is temporarily unavailable.',{
+        cause:error,
+        diagnostics:{dependency:'tenant_admin_database',reason:postgresFailureReason(error),configurationKeys:['OPERATOR_TENANT_ADMIN_DATABASE_URL']},
+      });
     } finally {
-      client.release();
+      client?.release();
     }
   }
 
@@ -164,7 +172,9 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
           [fields.label, fields.account_name, fields.account_number, fields.instructions, qr?.bytes ?? null, qr?.mime ?? null, fields.sort_order],
         );
         const id = inserted.rows[0]?.id;
-        if (!id) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The payment method could not be saved.');
+        if (!id) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The payment method could not be saved.', {
+          diagnostics: { dependency: 'tenant_admin_database', reason: 'invalid_response' },
+        });
         return { id, changed: true };
       });
     },

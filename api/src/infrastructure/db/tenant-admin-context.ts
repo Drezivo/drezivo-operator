@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { AppError } from '../../shared/http/errors.js';
+import { postgresFailureReason } from '../../shared/logging/failure-diagnostics.js';
 import type { CommandContext, CommandResult, SubscriptionPaymentRow, TenantDetail, TenantMember, TenantNote, TenantSummary } from '../../features/clients/administration/index.js';
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
@@ -63,14 +64,21 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
     );
     const role = result.rows[0];
     if (!role || role.rolsuper || role.rolbypassrls) {
-      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is misconfigured: the database role must not bypass row-level security.');
+      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is misconfigured: the database role must not bypass row-level security.', {
+        diagnostics: {
+          dependency: 'tenant_admin_database', reason: 'unsafe_role',
+          configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'],
+          databaseRole: { superuser: role?.rolsuper === true, bypassRls: role?.rolbypassrls === true },
+        },
+      });
     }
     roleVerified = true;
   }
 
   async function transaction<T>(tenantId: string, actorKey: string, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-    const client = await pool.connect();
+    let client: pg.PoolClient | undefined;
     try {
+      client = await pool.connect();
       await verifyRole(client);
       await client.query('BEGIN');
       // One round trip for every transaction-local setting (set_config(..., true) = SET LOCAL).
@@ -83,10 +91,17 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
+      if (error instanceof AppError) throw error;
+      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is temporarily unavailable.', {
+        cause: error,
+        diagnostics: {
+          dependency: 'tenant_admin_database', reason: postgresFailureReason(error),
+          configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'],
+        },
+      });
     } finally {
-      client.release();
+      client?.release();
     }
   }
 
@@ -229,8 +244,9 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
    * set), so a list costs a handful of round trips instead of a transaction per business.
    */
   async function operatorRead<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-    const client = await pool.connect();
+    let client: pg.PoolClient | undefined;
     try {
+      client = await pool.connect();
       await verifyRole(client);
       await client.query('BEGIN READ ONLY');
       await client.query(
@@ -241,10 +257,17 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
       await client.query('COMMIT');
       return result;
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
-      throw error;
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
+      if (error instanceof AppError) throw error;
+      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business administration is temporarily unavailable.', {
+        cause: error,
+        diagnostics: {
+          dependency: 'tenant_admin_database', reason: postgresFailureReason(error),
+          configurationKeys: ['OPERATOR_TENANT_ADMIN_DATABASE_URL'],
+        },
+      });
     } finally {
-      client.release();
+      client?.release();
     }
   }
   return {

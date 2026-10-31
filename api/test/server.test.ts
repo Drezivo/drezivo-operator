@@ -59,7 +59,7 @@ describe('server lifecycle', () => {
       event: 'api.server.startup_failed',
       host: expect.any(String),
       port: 5080,
-      error: { name: 'Error', code: 'EADDRINUSE', message: error.message },
+      error: { name: 'Error', code: 'EADDRINUSE' },
     }, 'API server failed to start');
   });
 

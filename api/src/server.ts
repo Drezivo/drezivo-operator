@@ -2,6 +2,7 @@ import http from 'node:http';
 import { app } from './composition.js';
 import { config } from './config/index.js';
 import { logger } from './shared/logging/logger.js';
+import { safeErrorSummary } from './shared/logging/failure-diagnostics.js';
 import { markProcessDraining, markProcessReady } from './shared/lifecycle/process-lifecycle.js';
 
 export const serverLimits = { requestTimeout: 30_000, headersTimeout: 10_000, keepAliveTimeout: 5_000, maxRequestsPerSocket: 100 } as const;
@@ -34,7 +35,7 @@ export function createStartupFailureHandler(port: number): (error: NodeJS.ErrnoE
       event: 'api.server.startup_failed',
       host: config.OPERATOR_API_HOST,
       port,
-      error: { name: error.name, code: error.code, message: error.message },
+      error: safeErrorSummary(error),
     }, 'API server failed to start');
     throw error;
   };

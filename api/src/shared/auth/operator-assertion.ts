@@ -18,7 +18,7 @@ export function createOperatorOverviewAssertion(input: {
   now?: number;
 }): string {
   const { secret, principal, requestId } = input;
-  if (typeof secret !== 'string' || Buffer.byteLength(secret, 'utf8') < 32) throw authUnavailable();
+  if (typeof secret !== 'string' || Buffer.byteLength(secret, 'utf8') < 32) throw authUnavailable(true);
   const role = operatorRoleSchema.safeParse(principal?.roles?.length === 1 ? principal.roles[0] : undefined);
   if (!role.success || !principal.clerkUserId || !principal.operatorOrganizationId || !requestId || principal.requestId !== requestId) throw authUnavailable();
 
@@ -47,6 +47,12 @@ function encode(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 }
 
-function authUnavailable(): AppError {
-  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator assertion authentication is unavailable.');
+function authUnavailable(missingSecret = false): AppError {
+  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator assertion authentication is unavailable.', {
+    diagnostics: {
+      dependency: 'internal_service_auth',
+      reason: missingSecret ? 'missing_assertion_secret' : 'request_auth_unavailable',
+      ...(missingSecret ? { configurationKeys: ['INTERNAL_OPERATOR_ASSERTION_SECRET'] } : {}),
+    },
+  });
 }

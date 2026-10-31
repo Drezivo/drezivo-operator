@@ -93,7 +93,9 @@ export function createClerkAuthorizationPort(input: {
       if (operatorOrganizationId !== input.organizationId) return { active: false, roles: [] };
       const membership = await readMembership(clerkUserId);
       if ('reason' in membership && membership.reason === 'provider_unavailable') {
-        throw new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator authentication is temporarily unavailable.');
+        throw new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator authentication is temporarily unavailable.', {
+          diagnostics: { dependency: 'operator_auth', reason: 'provider_unavailable' },
+        });
       }
       if (membership.active !== true) return { active: false, roles: [] };
       const role = clerkRoleToOperatorRole[membership.roles[0]];

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AppError } from '../../../shared/http/errors.js';
+import { AppError, remapDependencyError } from '../../../shared/http/errors.js';
 import { createInternalServiceClient, type InternalServiceClient } from '../../../infrastructure/http/internal-service-client.js';
 import { entitlementDetailSchema, type BillingReadPort, type EntitlementDetail } from '../index.js';
 import { createOperatorReadAssertion } from '../../../shared/auth/operator-read-assertion.js';
@@ -11,14 +11,17 @@ const uuid = z.string().uuid(); const iso = z.string().datetime({ offset: true }
 const upstreamSubscription = z.object({ id: uuid, name: z.string().min(1), plan_code: z.enum(['starter', 'professional', 'business']), status: z.enum(['trialing', 'active', 'past_due', 'restricted', 'cancelled']), currency: z.string().regex(/^[A-Z]{3}$/), current_period_start: iso, current_period_end: iso, cancel_at_period_end: z.boolean() }).strict();
 const listResponse = z.object({ items: z.array(upstreamSubscription), next_cursor: z.object({ currentPeriodEnd: iso, tenantId: uuid }).strict().nullable() }).strict();
 const upstreamEntitlements = z.object({ tenant_id: uuid, plan_code: z.enum(['starter', 'professional', 'business']), plan_version: z.literal(1), source: z.literal('plan_definition'), capability_count: z.literal(2), capabilities: z.array(z.object({ capability: z.enum(['physical_assets.max', 'frontdesk_seats.max']), enabled: z.boolean(), limit_value: z.number().int().nonnegative().safe().nullable() }).strict()).length(2) }).strict();
-const error = (code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string) => new AppError(503, code, message);
+const error = (code: 'DEPENDENCY_UNAVAILABLE' | 'DEPENDENCY_INVALID_RESPONSE', message: string, cause?: unknown) => {
+  const diagnostics = { dependency: 'internal_service' as const, reason: code === 'DEPENDENCY_INVALID_RESPONSE' ? 'invalid_response' as const : 'dependency_unavailable' as const };
+  return cause === undefined ? new AppError(503, code, message, { diagnostics }) : remapDependencyError(cause, { code, message, diagnostics });
+};
 
 export function createBillingReadAdapter(options: BillingReadAdapterOptions): BillingReadPort {
   const client: InternalServiceClient = createInternalServiceClient({ ...options, fetchImpl: options.fetchImpl ? ((input, init) => options.fetchImpl!(input as string | URL, init)) as typeof fetch : undefined });
   const request = async <T>(path: string, schema: z.ZodType<T>, requestId: string, query?: URLSearchParams, operatorAssertion?: string): Promise<T | null> => {
     let response;
     try { response = await client.requestJsonResponse<unknown>(query ? `${path}?${query.toString()}` : path, { requestId, operatorAssertion }); }
-    catch (cause) { if (cause instanceof AppError && cause.code === 'OPERATOR_AUTH_UNAVAILABLE') throw cause; if (cause instanceof AppError && cause.code === 'DEPENDENCY_INVALID_RESPONSE') throw error('DEPENDENCY_INVALID_RESPONSE', 'The billing read service returned an invalid response.'); throw error('DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.'); }
+    catch (cause) { if (cause instanceof AppError && cause.code === 'OPERATOR_AUTH_UNAVAILABLE') throw cause; if (cause instanceof AppError && cause.code === 'DEPENDENCY_INVALID_RESPONSE') throw error('DEPENDENCY_INVALID_RESPONSE', 'The billing read service returned an invalid response.', cause); throw error('DEPENDENCY_UNAVAILABLE', 'The billing read service is unavailable.', cause); }
     if (response.data === null) return null;
     const parsedEnvelope = envelope.safeParse(response.data); if (!parsedEnvelope.success || parsedEnvelope.data.request_id !== requestId) throw error('DEPENDENCY_INVALID_RESPONSE', 'The billing read service returned an invalid response.');
     const parsed = schema.safeParse(parsedEnvelope.data.data); if (!parsed.success) throw error('DEPENDENCY_INVALID_RESPONSE', 'The billing read service returned an invalid response.'); return parsed.data;

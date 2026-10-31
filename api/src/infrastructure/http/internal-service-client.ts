@@ -1,4 +1,5 @@
-import { AppError } from '../../shared/http/errors.js';
+import { AppError, type FailureReason } from '../../shared/http/errors.js';
+import { networkFailureReason } from '../../shared/logging/failure-diagnostics.js';
 import { isLoopbackHostname } from './internal-service-transport.js';
 
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -6,9 +7,25 @@ const MAX_RESPONSE_BYTES = 1_048_576;
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
 const allowedMethods = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const protectedHeaders = new Set(['accept', 'authorization', 'content-type', 'x-request-id', 'x-drezivo-operator-assertion']);
-const dependencyError = () => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business service is unavailable.');
-const invalidResponseError = () => new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The business service returned an invalid response.');
-const authError = () => new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Internal service authentication is unavailable.');
+const dependencyError = (
+  reason: FailureReason = 'dependency_unavailable',
+  options: { cause?: unknown; upstreamStatus?: number; configurationKeys?: readonly string[] } = {},
+) => new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The business service is unavailable.', {
+  ...(options.cause !== undefined ? { cause: options.cause } : {}),
+  diagnostics: {
+    dependency: 'internal_service',
+    reason,
+    ...(options.configurationKeys ? { configurationKeys: options.configurationKeys } : {}),
+    ...(options.upstreamStatus ? { upstreamStatus: options.upstreamStatus } : {}),
+  },
+});
+const invalidResponseError = (upstreamStatus?: number) => new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The business service returned an invalid response.', {
+  diagnostics: { dependency: 'internal_service', reason: 'invalid_response', ...(upstreamStatus ? { upstreamStatus } : {}) },
+});
+const authError = (cause?: unknown) => new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Internal service authentication is unavailable.', {
+  cause,
+  diagnostics: { dependency: 'internal_service_auth', reason: 'request_auth_unavailable', configurationKeys: ['INTERNAL_SERVICE_AUTH'] },
+});
 
 export type ServiceAuth = (requestId: string) => string | Promise<string>;
 export type InternalServiceClientOptions = {
@@ -45,7 +62,7 @@ async function readBounded(response: Response, max: number): Promise<string> {
   const declared = response.headers.get('content-length');
   if (declared && (!/^\d+$/.test(declared) || Number(declared) > max)) {
     if (response.body) await response.body.cancel();
-    throw dependencyError();
+    throw dependencyError('response_too_large');
   }
   if (!response.body) return '';
   const reader = response.body.getReader(); const chunks: Uint8Array[] = []; let total = 0;
@@ -54,7 +71,7 @@ async function readBounded(response: Response, max: number): Promise<string> {
       const part = await reader.read();
       if (part.done) break;
       total += part.value.byteLength;
-      if (total > max) { await reader.cancel(); throw dependencyError(); }
+      if (total > max) { await reader.cancel(); throw dependencyError('response_too_large'); }
       chunks.push(part.value);
     }
   } finally { reader.releaseLock(); }
@@ -67,7 +84,9 @@ export class InternalServiceClient {
   private readonly fetchImpl: typeof fetch;
   private readonly maxResponseBytes: number;
   constructor(private readonly options: InternalServiceClientOptions) {
-    try { this.baseUrl = base(options.baseUrl, options.allowInsecureTransport === true); this.timeoutMs = timeout(options.timeoutMs); } catch { throw dependencyError(); }
+    try { this.baseUrl = base(options.baseUrl, options.allowInsecureTransport === true); this.timeoutMs = timeout(options.timeoutMs); } catch (cause) {
+      throw dependencyError('invalid_configuration', { cause, configurationKeys: ['INTERNAL_SERVICE_BASE_URL', 'INTERNAL_SERVICE_ALLOW_INSECURE_HTTP'] });
+    }
     this.fetchImpl = options.fetchImpl ?? fetch; this.maxResponseBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1 || this.maxResponseBytes > MAX_RESPONSE_BYTES) throw dependencyError();
   }
@@ -79,7 +98,7 @@ export class InternalServiceClient {
     const method = typeof request.method === 'undefined' ? 'GET' : typeof request.method === 'string' ? request.method.toUpperCase() : '';
     if (!allowedMethods.has(method)) throw dependencyError();
     let auth: string;
-    try { auth = await this.options.serviceAuth(request.requestId); } catch { throw authError(); }
+    try { auth = await this.options.serviceAuth(request.requestId); } catch (cause) { throw authError(cause); }
     if (typeof auth !== 'string' || auth.trim() === '' || /[\r\n]/.test(auth)) throw authError();
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -91,15 +110,25 @@ export class InternalServiceClient {
         headers['X-Drezivo-Operator-Assertion'] = request.operatorAssertion;
       }
       if (request.body !== undefined) headers['Content-Type'] = 'application/json';
-      const response = await this.fetchImpl(url, { method, headers, body: request.body === undefined ? undefined : JSON.stringify(request.body), redirect: 'error', signal: controller.signal });
-      const text = await readBounded(response, this.maxResponseBytes);
-      if (!acceptedStatuses.includes(response.status)) throw dependencyError();
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url, { method, headers, body: request.body === undefined ? undefined : JSON.stringify(request.body), redirect: 'error', signal: controller.signal });
+      } catch (cause) {
+        throw dependencyError(controller.signal.aborted ? 'timeout' : networkFailureReason(cause), { cause });
+      }
+      let text: string;
+      try { text = await readBounded(response, this.maxResponseBytes); }
+      catch (cause) {
+        if (cause instanceof AppError) throw cause;
+        throw dependencyError('transport_failed', { cause });
+      }
+      if (!acceptedStatuses.includes(response.status)) throw dependencyError('upstream_rejected', { upstreamStatus: response.status });
       if (response.status === 404) return { status: response.status, data: null };
-      if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw invalidResponseError();
-      try { return { status: response.status, data: JSON.parse(text) as T }; } catch { throw invalidResponseError(); }
+      if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) throw invalidResponseError(response.status);
+      try { return { status: response.status, data: JSON.parse(text) as T }; } catch { throw invalidResponseError(response.status); }
     } catch (error) {
       if (error instanceof AppError) throw error;
-      throw dependencyError();
+      throw dependencyError(networkFailureReason(error), { cause: error });
     } finally { clearTimeout(timer); }
   }
   async requestJson<T>(path: string, request: RequestJsonOptions): Promise<T> {

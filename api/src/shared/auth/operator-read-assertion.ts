@@ -41,7 +41,7 @@ export function createOperatorReadAssertion(input: {
     (queryBoundPermission && query === '') ||
     !analyticsQueryValid ||
     (tenantId !== undefined && !zUuid(tenantId))
-  ) throw authUnavailable();
+  ) throw authUnavailable(typeof secret !== 'string' || Buffer.byteLength(secret, 'utf8') < 32);
 
   const iat = Math.floor((input.now ?? Date.now()) / 1000);
   const claims: Record<string, unknown> = {
@@ -60,4 +60,12 @@ export function createOperatorReadAssertion(input: {
 
 function encode(value: unknown): string { return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url'); }
 function zUuid(value: string): boolean { return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
-function authUnavailable(): AppError { return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator assertion authentication is unavailable.'); }
+function authUnavailable(missingSecret = false): AppError {
+  return new AppError(503, 'OPERATOR_AUTH_UNAVAILABLE', 'Operator assertion authentication is unavailable.', {
+    diagnostics: {
+      dependency: 'internal_service_auth',
+      reason: missingSecret ? 'missing_assertion_secret' : 'request_auth_unavailable',
+      ...(missingSecret ? { configurationKeys: ['INTERNAL_OPERATOR_ASSERTION_SECRET'] } : {}),
+    },
+  });
+}
