@@ -3,9 +3,15 @@ import pg from 'pg';
 import type { SubscriptionPaymentRow, TenantAdminPort } from '../../clients/administration/index.js';
 import type { PaymentDbRow, TenantAdminDbContext } from '../../../infrastructure/db/tenant-admin-context.js';
 
-export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<TenantAdminPort, 'listPayments' | 'reviewPayment'> {
+export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<TenantAdminPort, 'listPayments' | 'listTenantPayments' | 'reviewPayment'> {
   const { operatorRead, command, subscriptionOf, liftLifecycleRestriction, conflict, notFound, paymentOf, PAYMENT_QUEUE_LIMIT } = context;
   return {
+    async listTenantPayments(tenantId) {
+      return context.transaction(tenantId, 'operator:read', async (client) => {
+        const tenant = await context.tenantRow(client, tenantId);
+        return tenant ? context.paymentsOf(client, tenant, context.PAYMENT_HISTORY_LIMIT) : null;
+      });
+    },
     async listPayments(filter) {
       // Oldest pending first so nobody waits longest; recent history newest first (ordered in SQL).
       const rows = await operatorRead(async (client) => {

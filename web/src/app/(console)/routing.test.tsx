@@ -5,8 +5,6 @@ import { OverviewPage } from "@/features/overview/page";
 import { AnalyticsPage } from "@/features/analytics/page";
 import { ClientsPage } from "@/features/clients/page";
 import { BusinessesPage } from "@/features/businesses/page";
-import { SubscriptionsPage } from "@/features/subscriptions/page";
-import { AssignedPlansPage } from "@/features/assigned-plans/page";
 import { AuditLogPage } from "@/features/audit-log/page";
 import { OperatorActivityPage } from "@/features/operator-activity/page";
 import { BackgroundJobsPage } from "@/features/background-jobs/page";
@@ -44,8 +42,8 @@ function TestConsole() {
   const pathname = mocks.pathname;
   const routes: Record<string, React.ReactNode> = {
     "/": <OverviewPage />, "/analytics": <AnalyticsPage />, "/clients": <ClientsPage />,
-    "/businesses": <BusinessesPage />, "/subscriptions": <SubscriptionsPage />,
-    "/assigned-plans": <AssignedPlansPage />, "/audit-log": <AuditLogPage />,
+    "/businesses": <BusinessesPage />,
+    "/audit-log": <AuditLogPage />,
     "/operator-activity": <OperatorActivityPage />, "/background-jobs": <BackgroundJobsPage />,
   };
   const page = pathname.startsWith("/clients/") ? <ClientsPage tenantId={pathname.split("/")[2]} />
@@ -193,7 +191,7 @@ describe("App Router console pages", () => {
     await waitFor(() => expect(mocks.signOut).toHaveBeenCalledTimes(1));
   });
 
-  it.each(["/analytics", "/subscriptions", "/clients/tenant-a"])("blocks disabled route %s without requesting data", async (path) => {
+  it.each(["/analytics", "/audit-log", "/clients/tenant-a"])("blocks disabled route %s without requesting data", async (path) => {
     process.env.NEXT_PUBLIC_OPERATOR_VIEWS = "overview";
     mocks.pathname = path;
     const fetchMock = vi.fn(); vi.stubGlobal("fetch", fetchMock);
@@ -233,97 +231,6 @@ describe("App Router console pages", () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/analytics?months=12");
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer operator-session-token");
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
-  });
-
-  it("does not render the previous view data while subscriptions load", async () => {
-    let finishSubscriptions: ((response: Response) => void) | undefined;
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(overviewEnvelope())
-      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishSubscriptions = resolve; }));
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { rerender } = render(<TestConsole />);
-    expect(await screen.findByText(/Snapshot as of/)).toBeInTheDocument();
-
-    visit("/subscriptions");
-    rerender(<TestConsole />);
-
-    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
-    expect(screen.queryByText(/Snapshot as of/)).not.toBeInTheDocument();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-
-    await act(async () => {
-      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_empty"));
-    });
-    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
-  });
-
-  it("loads subscriptions after leaving the Clients view", async () => {
-    visit("/clients");
-    let finishSubscriptions: ((response: Response) => void) | undefined;
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      if (String(input).includes("/subscriptions")) {
-        return new Promise<Response>((resolve) => { finishSubscriptions = resolve; });
-      }
-      return Promise.resolve(responseEnvelope({ items: [], next_cursor: null }, "req_clients_loaded"));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { rerender } = render(<TestConsole />);
-    expect(await screen.findByText("No businesses yet")).toBeInTheDocument();
-    expect(await screen.findByText("req_clients_loaded")).toBeInTheDocument();
-
-    visit("/subscriptions");
-    rerender(<TestConsole />);
-
-    expect(await screen.findByRole("status")).toHaveTextContent("Loading from operator API");
-    expect(screen.queryByText("No businesses yet")).not.toBeInTheDocument();
-    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/subscriptions"))).toBe(true));
-
-    await act(async () => {
-      finishSubscriptions?.(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_after_clients"));
-    });
-    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
-  });
-
-  it("loads subscriptions directly and follows the returned page cursor", async () => {
-    visit("/subscriptions");
-    const subscription = {
-      tenant_id: "00000000-0000-4000-8000-000000000001",
-      business_name: "First Subscription Business",
-      plan_code: "starter",
-      status: "active",
-      currency: "PHP",
-      current_period_end: "2026-11-01T00:00:00.000Z",
-      amount_minor: "10000",
-      paid_at: null,
-      reviewed_by: null,
-      payer_key: null,
-      paid_amount_minor: null,
-      payment_status: null,
-    };
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(responseEnvelope({ items: [subscription], next_cursor: "next / cursor" }, "req_subscriptions_page1"))
-      .mockResolvedValueOnce(responseEnvelope({ items: [], next_cursor: null }, "req_subscriptions_page2"));
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<TestConsole />);
-
-    expect(await screen.findByText("First Subscription Business")).toBeInTheDocument();
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25");
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
-
-    expect(await screen.findByText("No subscriptions")).toBeInTheDocument();
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://localhost:5080/api/v1/subscriptions?limit=25&cursor=next%20%2F%20cursor");
-  });
-
-  it("shows an API error instead of crashing on a malformed subscriptions payload", async () => {
-    visit("/subscriptions");
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseEnvelope({ next_cursor: null }, "req_subscriptions_invalid")));
-
-    render(<TestConsole />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("The Operator API returned invalid subscriptions data.");
   });
 
   it("shows a recoverable session error and does not fetch when Clerk returns no token", async () => {
@@ -531,15 +438,6 @@ describe("App Router console pages", () => {
       await waitFor(()=>expect(screen.getAllByRole("link",{name:"Local Luna"})).toHaveLength(2));
       expect(errors.mock.calls.some(args=>args.some(arg=>String(arg).includes("same key")))).toBe(false);
     } finally { errors.mockRestore(); }
-  });
-  it("loads assigned plans by choosing a business name", async () => {
-    visit("/assigned-plans");const tenant="11111111-1111-4111-8111-111111111111";
-    const fetcher=vi.fn(async(url)=>String(url).includes("/entitlements")?responseEnvelope({capabilities:[{capability:"catalogue.product.max",enabled:true,limit_value:100}]},"plan-ui"):responseEnvelope({items:[{tenant_id:tenant,name:"Local Luna",slug:"local-luna"}]},"business-ui"));vi.stubGlobal("fetch",fetcher);
-    render(<TestConsole/>);await screen.findByRole("option",{name:/Local Luna/});
-    fireEvent.change(screen.getByRole("combobox",{name:"Business"}),{target:{value:tenant}});
-    expect(await screen.findByText("Catalogue Product Max")).toBeInTheDocument();
-    expect(fetcher.mock.calls.some(([url])=>String(url).includes(`/businesses/${tenant}/entitlements`))).toBe(true);
-    expect(screen.queryByRole("textbox",{name:"Business ID"})).not.toBeInTheDocument();
   });
 
 });

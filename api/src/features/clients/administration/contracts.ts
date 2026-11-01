@@ -38,6 +38,8 @@ export type TenantSummary = {
   member_counts: { active: number; suspended: number; removed: number };
   /** A subscription payment proof is waiting for review. */
   pending_payment: boolean;
+  /** Latest sign-in of any active member, from the business Clerk directory; null when unknown. */
+  last_signed_in_at?: string | null;
 };
 
 export const subscriptionPaymentStatusSchema = z.enum(['pending', 'verified', 'failed']);
@@ -115,6 +117,8 @@ export type TenantAdminPort = {
   extendReadOnly(tenantId: string, readOnlyUntil: Date, context: CommandContext): Promise<CommandResult>;
   addNote(tenantId: string, body: string, authorLabel: string, context: CommandContext): Promise<CommandResult>;
   listPayments(filter: 'pending' | 'recent'): Promise<SubscriptionPaymentRow[]>;
+  /** Every subscription payment of one business, newest first; null when the business does not exist. */
+  listTenantPayments(tenantId: string): Promise<SubscriptionPaymentRow[] | null>;
   /** Approve: payment verified, one more paid month, owner emailed. Reject: reason shown to the owner. */
   reviewPayment(tenantId: string, paymentId: string, decision: 'approve' | 'reject', context: CommandContext): Promise<CommandResult>;
 };
@@ -135,6 +139,7 @@ export const unavailableTenantAdminPort: TenantAdminPort = {
   extendReadOnly: async () => { throw unavailable(); },
   addNote: async () => { throw unavailable(); },
   listPayments: async () => { throw unavailable(); },
+  listTenantPayments: async () => { throw unavailable(); },
   reviewPayment: async () => { throw unavailable(); },
 };
 

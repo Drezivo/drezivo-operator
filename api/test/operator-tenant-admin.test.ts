@@ -22,7 +22,7 @@ function port(overrides: Partial<TenantAdminPort> = {}): TenantAdminPort {
   return {
     listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, updateProfile: async () => result, setTenantLocked: async () => result,
     setMemberSuspended: async () => result, setTrialEnd: async () => result, activateSubscription: async () => result,
-    extendReadOnly: async () => result, addNote: async () => result, listPayments: async () => [], reviewPayment: async () => result, ...overrides,
+    extendReadOnly: async () => result, addNote: async () => result, listPayments: async () => [], listTenantPayments: async () => [], reviewPayment: async () => result, ...overrides,
   };
 }
 const directory = { lookup: async (ids: readonly string[]) => new Map(ids.filter((id) => id === 'user_owner_a').map((id) => [id, { email: 'owner@luna.ph', name: 'Luna Owner', last_sign_in_at: null, banned: false, locked: false }] as const)) };
@@ -55,6 +55,30 @@ describe('operator tenant administration boundary', () => {
     expect((await request(a).get(`/api/v1/tenants/${tenantId}`)).body.data.name).toBe('Luna Gowns');
     expect(seen).toContain('tenant.admin.read');
     expect(seen).toContain('tenant.admin.manage');
+  });
+
+  it("shows each business's latest sign-in among its active members", async () => {
+    const otherTenant = '00000000-0000-4000-8000-000000000222';
+    const person = (tenant: string, user: string, status: 'active' | 'suspended') => ({
+      tenant_id: tenant, tenant_name: 'Luna Gowns', tenant_status: 'active' as const, membership_id: membershipId,
+      clerk_user_id: user, role: 'frontdesk' as const, status, created_at: '2026-09-20T00:00:00.000Z',
+    });
+    const signIns: Record<string, string> = {
+      user_old: '2026-10-01T00:00:00.000Z',
+      user_new: '2026-10-20T00:00:00.000Z',
+      user_suspended: '2026-10-30T00:00:00.000Z',
+    };
+    const signInDirectory = { lookup: async (ids: readonly string[]) => new Map(ids.filter((id) => signIns[id]).map((id) => [id, { email: null, name: null, last_sign_in_at: signIns[id]!, banned: false, locked: false }] as const)) };
+    const a = express();
+    a.use((_req, res, next) => { res.locals.requestId = 'req'; next(); });
+    a.use('/api/v1', createOperatorTenantAdminRouter(port({
+      listTenants: async () => [detail, { ...detail, tenant_id: otherTenant }],
+      listPeople: async () => [person(tenantId, 'user_old', 'active'), person(tenantId, 'user_new', 'active'), person(tenantId, 'user_suspended', 'suspended')],
+    }), (_req, _res, next) => next(), { permissionMiddleware: () => (_req, _res, next) => next(), directory: signInDirectory }));
+
+    const list = await request(a).get('/api/v1/tenants');
+    expect(list.status).toBe(200);
+    expect(list.body.data.items.map((item: { last_signed_in_at: string | null }) => item.last_signed_in_at)).toEqual(['2026-10-20T00:00:00.000Z', null]);
   });
 
   it('lists people across businesses and adds names and emails from the business directory', async () => {
@@ -185,6 +209,23 @@ describe('operator tenant administration boundary', () => {
     expect(pending.headers['cache-control']).toBe('no-store');
     await request(a).get('/api/v1/subscription-payments?status=recent');
     expect(filters).toEqual(['pending', 'recent']);
+  });
+
+  it("lists one business's whole payment history, refusing a bad or unknown business", async () => {
+    const asked: string[] = [];
+    const row: SubscriptionPaymentRow = {
+      payment_id: paymentId, tenant_id: tenantId, tenant_name: 'Luna Gowns', status: 'verified', amount_minor: '29900', currency: 'PHP',
+      reference: 'GC-777', method_label: 'GCash', submitted_at: '2026-09-01T00:00:00.000Z', reviewed_at: '2026-09-02T00:00:00.000Z', reviewed_by: 'op_1', review_note: null, has_proof: true,
+    };
+    const a = app(port({ listTenantPayments: async (id) => { asked.push(id); return id === tenantId ? [row] : null; } }));
+    const found = await request(a).get(`/api/v1/tenants/${tenantId}/subscription-payments`);
+    expect(found.status).toBe(200);
+    expect(found.body.data.items).toEqual([row]);
+    expect(found.headers['cache-control']).toBe('no-store');
+    const missing = await request(a).get('/api/v1/tenants/00000000-0000-4000-8000-000000000999/subscription-payments');
+    expect(missing.status).toBe(404);
+    expect((await request(a).get('/api/v1/tenants/not-a-uuid/subscription-payments')).body.error.code).toBe('VALIDATION_FAILED');
+    expect(asked).toEqual([tenantId, '00000000-0000-4000-8000-000000000999']);
   });
 
   it('signs a proof link only when proof viewing is configured', async () => {

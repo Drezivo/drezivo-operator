@@ -10,6 +10,7 @@ import { type SubscriptionPayment } from "@/features/payments/model";
 import { type ClientCommandResult } from "@/features/clients/model";
 import { formatManila, formatPeso } from "@/shared/lib/format";
 import { getTokenWithTimeout } from "@/shared/auth/token";
+import { BusinessSelect } from "@/features/clients/components/BusinessSelect";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "@/shared/ui/StatePanels";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
 
@@ -125,23 +126,37 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
   </>;
 }
 
-/** The pending queue, with recently reviewed payments one tab away. */
-export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Promise<string | null>; onOpenBusiness: (tenantId: string) => void }) {
-  const token = useCallback(async (signal?: AbortSignal) => {
-    const value = await getTokenWithTimeout(getToken, signal);
-    if (!value) throw new ApiError("The operator session could not be verified.", "unauthorized");
-    return value;
-  }, [getToken]);
-  const [view, setView] = useState<"pending" | "recent">("pending");
+/** Every payment one business has sent, newest first, with the same review actions as the queue. */
+function BusinessPaymentHistory({ tenantId, token, onOpenBusiness }: { tenantId: string; token: (signal?: AbortSignal) => Promise<string>; onOpenBusiness: (tenantId: string) => void }) {
+  const [state, load] = useCachedLoad<{ items: SubscriptionPayment[] }>(paymentPaths.tenantPayments(tenantId), token);
+  const [notice, setNotice] = useState<{ message: string; requestId: string } | null>(null);
+  if (state.status === "error") return <StatePanel error={state.error} dependency="Business API" onRetry={() => void load()} />;
+  if (state.status === "loading") return <LoadingPanel />;
+  const payments = state.data.items;
+  const approved = payments.filter((payment) => payment.status === "verified");
+  const approvedMinor = approved.reduce((sum, payment) => sum + Number(payment.amount_minor), 0);
+  return <>
+    {notice && <p className="action-success" role="status">{notice.message}<RequestId requestId={notice.requestId} /></p>}
+    {payments.length === 0 ? <EmptyPanel title="No payments yet" body="This business has not sent a payment." />
+      : <>
+        <p className="muted" role="status">{payments.length} payment{payments.length === 1 ? "" : "s"} · {approved.length} approved, {formatPeso(String(approvedMinor), approved[0]?.currency ?? "PHP")} in total</p>
+        <PaymentReviewList payments={payments} token={token}
+          onReviewed={(result, requestId, decision) => {
+            setNotice({ message: `${decision === "approve" ? "Payment approved" : "Payment rejected"} for ${result.tenant.name}. An owner notification is queued.`, requestId });
+            void load();
+          }} />
+        <p className="muted clients-footnote">
+          <button type="button" className="text-button inline-link" onClick={() => onOpenBusiness(tenantId)}>Open this business</button> · Dates in Manila time <RequestId requestId={state.requestId} />
+        </p>
+      </>}
+  </>;
+}
+
+/** The pending queue or the recently reviewed payments across every business. */
+function PaymentQueue({ view, token, onOpenBusiness }: { view: "pending" | "recent"; token: (signal?: AbortSignal) => Promise<string>; onOpenBusiness: (tenantId: string) => void }) {
   const [state, load] = useCachedLoad<{ items: SubscriptionPayment[] }>(paymentPaths.payments(view), token);
   const [notice, setNotice] = useState<{ message: string; requestId: string } | null>(null);
-
-  return <div className="clients payments">
-    <div className="segmented" role="tablist" aria-label="Show">
-      {(["pending", "recent"] as const).map((id) => <button key={id} type="button" role="tab" aria-selected={view === id} className={view === id ? "active" : ""} onClick={() => { setNotice(null); setView(id); }}>
-        {id === "pending" ? "Waiting for review" : "Recently sent"}
-      </button>)}
-    </div>
+  return <>
     {notice && <p className="action-success" role="status">{notice.message}<RequestId requestId={notice.requestId} /></p>}
     {state.status === "error" ? <StatePanel error={state.error} dependency="Business API" onRetry={() => void load()} />
       : state.status === "loading" ? <LoadingPanel />
@@ -152,5 +167,29 @@ export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Pr
               void load();
             }} />}
     {state.status === "ready" && <p className="muted clients-footnote">Amounts are set by the server from the plan price · Dates in Manila time <RequestId requestId={state.requestId} /></p>}
+  </>;
+}
+
+/** The pending queue, recently reviewed payments, and one business's whole history. */
+export function PaymentsPanel({ getToken, onOpenBusiness }: { getToken: () => Promise<string | null>; onOpenBusiness: (tenantId: string) => void }) {
+  const token = useCallback(async (signal?: AbortSignal) => {
+    const value = await getTokenWithTimeout(getToken, signal);
+    if (!value) throw new ApiError("The operator session could not be verified.", "unauthorized");
+    return value;
+  }, [getToken]);
+  const [view, setView] = useState<"pending" | "recent" | "business">("pending");
+  const [tenantId, setTenantId] = useState("");
+
+  return <div className="clients payments">
+    <div className="segmented" role="tablist" aria-label="Show">
+      {(["pending", "recent", "business"] as const).map((id) => <button key={id} type="button" role="tab" aria-selected={view === id} className={view === id ? "active" : ""} onClick={() => setView(id)}>
+        {id === "pending" ? "Waiting for review" : id === "recent" ? "Recently sent" : "By business"}
+      </button>)}
+    </div>
+    {view === "business" ? <>
+      <BusinessSelect token={token} value={tenantId} onChange={setTenantId} label="Business" />
+      {tenantId ? <BusinessPaymentHistory key={tenantId} tenantId={tenantId} token={token} onOpenBusiness={onOpenBusiness} />
+        : <EmptyPanel title="Choose a business" body="Pick a business to see every payment it has sent." />}
+    </> : <PaymentQueue key={view} view={view} token={token} onOpenBusiness={onOpenBusiness} />}
   </div>;
 }

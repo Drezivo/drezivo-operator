@@ -19,6 +19,7 @@ import { createOperatorRetryRouter, unavailableOperationsRetryCommandPort } from
 import { createOperatorTenantAdminRouter, unavailableTenantAdminPort, type TenantAdminPort, type ProofLinkSigner } from "./features/clients/administration/index.js";
 import { createSubscriptionAdministrationRouter } from './features/subscriptions/administration-routes.js';
 import { createPaymentAdministrationRouter } from './features/payments/routes.js';
+import { createAnnouncementsRouter, unavailableAnnouncementsPort } from './features/announcements/index.js';
 import { createOperatorPlatformPaymentsRouter, unavailablePlatformPaymentsPort, type PlatformPaymentsPort } from "./features/payment-methods/index.js";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "./features/clients/repository/clerk-directory.js";
 
@@ -118,6 +119,7 @@ export function createApp(dependencies: OperatorAppDependencies = {}) {
   app.use('/api/v1', createSubscriptionAdministrationRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use('/api/v1', createPaymentAdministrationRouter(tenantAdminPort, requireAuthorizedOperator, { permissionMiddleware, proofLink }));
   app.use('/api/v1', createOperatorPlatformPaymentsRouter(platformPaymentsPort, requireAuthorizedOperator, { permissionMiddleware }));
+  app.use('/api/v1', createAnnouncementsRouter(consolePorts.announcements ?? unavailableAnnouncementsPort, requireAuthorizedOperator, { permissionMiddleware }));
   app.use(notFound);
   app.use(errorHandler);
   return app;
