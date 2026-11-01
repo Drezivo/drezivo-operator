@@ -133,6 +133,16 @@ describe("ClientsPanel", () => {
     expect(screen.queryByText("Luna Gowns")).not.toBeInTheDocument();
   });
 
+  it("shows when each business last signed in, or that it has not yet", async () => {
+    const signedIn = "2026-10-30T09:15:00Z";
+    mockFetch((url) => url.endsWith("/tenants")
+      ? envelope({ items: [{ ...detail, last_signed_in_at: signedIn }, { ...paid, last_signed_in_at: null }] })
+      : envelope(detail));
+    render(<Harness />);
+    expect(await screen.findByText(formatManila(signedIn, true))).toBeInTheDocument();
+    expect(screen.getByText("Not yet")).toBeInTheDocument();
+  });
+
   it("opens a business from its row and goes back to the list", async () => {
     mockFetch(listAndDetail);
     render(<Harness />);

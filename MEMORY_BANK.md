@@ -130,3 +130,16 @@ Updated: 2026-10-15 (Asia/Manila).
   scope with the owner; do not silently push the other repository.
 - Lesson: passing local integration does not establish hosted schema or API deployment readiness.
   Vercel success only verifies the frontend build/deployment, not the backend dependency.
+
+## QA pass 2026-11-01 (staging)
+- Removed the Subscriptions and Assigned plans pages (web routes, nav, features). Their read-only
+  API routes (/subscriptions, /businesses/:id/entitlements) are still mounted but unused; remove
+  them with the billing read port in a follow-up.
+- Payments gained a "By business" tab: GET /tenants/:id/subscription-payments (newest first, 200
+  max, tenant-scoped transaction) with the same review actions as the queue.
+- Clients list shows "Last signed in": latest Clerk sign-in among a business's active members,
+  computed in the API from operator_people + the business user directory.
+- Announcements page: POST/GET /announcements call business migration 0094 functions
+  (operator_send_announcement, operator_announcements). The business worker emails each business's
+  contact address. Business 0094 must be applied before this page works.
+- Not done here by owner instruction: plan change from client detail, optional reasons (both ongoing).

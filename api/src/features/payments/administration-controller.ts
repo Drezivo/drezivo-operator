@@ -73,6 +73,13 @@ export function createPaymentAdministrationController(
       send(res, 200, { items: await service.listPayments(query.status) });
     } catch (error) { forward(next, error); }
   },
+    listTenantPayments: async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const items = await service.listTenantPayments(tenantIdParam(req));
+        if (!items) throw new AppError(404, 'NOT_FOUND', 'The business was not found.');
+        send(res, 200, { items });
+      } catch (error) { forward(next, error); }
+    },
     reviewPayment: (decision: 'approve' | 'reject'): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
       try {
         const tenantId = tenantIdParam(req);

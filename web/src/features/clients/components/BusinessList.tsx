@@ -49,7 +49,7 @@ export function BusinessList({ token, filter, onFilter, onOpen }: { token: (sign
       ? <EmptyPanel title={all.length === 0 ? "No businesses yet" : filter === "attention" && !text ? "Nothing needs attention" : "No business matches"}
           body={all.length === 0 ? "Businesses appear here after an owner finishes onboarding." : filter === "attention" && !text ? "No payment is waiting, no trial or paid month ends in the next 3 days, and every business has full access." : "Try another filter or search term."} />
       : <ul className="data-list client-list" aria-label="Businesses">
-        <li className="data-list-head" aria-hidden="true"><span>Business</span><span>Status</span><span>What to know</span><span>Plan</span><span>Staff</span><span>Joined</span><span /></li>
+        <li className="data-list-head" aria-hidden="true"><span>Business</span><span>Status</span><span>What to know</span><span>Plan</span><span>Staff</span><span>Last signed in</span><span>Joined</span><span /></li>
         {rows.map((client) => {
           const state = clientState(client);
           return <li key={client.tenant_id} className={`data-row state-${state}`}>
@@ -61,6 +61,7 @@ export function BusinessList({ token, filter, onFilter, onOpen }: { token: (sign
               <div className="field-note"><dt>What to know</dt><dd>{clientAttention(client, now)}</dd></div>
               <div><dt>Plan</dt><dd className="capitalize">{client.subscription?.plan_code ?? "—"}</dd></div>
               <div><dt>Staff</dt><dd>{client.member_counts.active} active{client.member_counts.suspended > 0 ? ` · ${client.member_counts.suspended} suspended` : ""}</dd></div>
+              <div><dt>Last signed in</dt><dd>{client.last_signed_in_at ? formatManila(client.last_signed_in_at, true) : "Not yet"}</dd></div>
               <div><dt>Joined</dt><dd>{formatManila(client.created_at)}</dd></div>
             </dl>
             <CaretRight className="row-chevron" size={16} aria-hidden="true" />

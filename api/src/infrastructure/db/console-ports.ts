@@ -1,4 +1,5 @@
 import type { AnalyticsReadPort } from '../../features/analytics/index.js';
+import { createAnnouncementsDbAdapter, type AnnouncementsPort } from '../../features/announcements/index.js';
 import type { AuditPort } from '../../features/audit-logs/index.js';
 import type { BillingReadPort } from '../../features/subscriptions/index.js';
 import type { SessionAuditPort } from '../../features/sessions/index.js';
@@ -27,6 +28,7 @@ export type ConsolePorts = {
   retry: OperationsRetryCommandPort;
   session: SessionAuditPort;
   analytics: AnalyticsReadPort;
+  announcements: AnnouncementsPort;
 };
 
 /** Composes feature-specific adapters over one least-privilege PostgreSQL context. */
@@ -40,6 +42,7 @@ export function createConsoleDbAdapter(options: TenantAdminDbOptions & { synthet
     retry: createRetryDbAdapter(db),
     session: createSessionAuditDbAdapter(db),
     analytics: createAnalyticsDbAdapter(db, options.synthetic),
+    announcements: createAnnouncementsDbAdapter(db),
     close: db.close,
   };
 }

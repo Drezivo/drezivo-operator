@@ -7,7 +7,8 @@ describe("enabled operator views", () => {
     expect(resources.every((view) => !view.path.includes("?"))).toBe(true);
     expect(resourceForPath("/clients/tenant-a")?.id).toBe("clients");
     expect(resourceForPath("/businesses/tenant-a")?.id).toBe("businesses");
-    expect(resourceForPath("/assigned-plans")?.id).toBe("entitlements");
+    expect(resourceForPath("/assigned-plans")).toBeUndefined();
+    expect(resourceForPath("/subscriptions")).toBeUndefined();
     expect(resourceForPath("/clients-unrelated")).toBeUndefined();
     expect(clientHref("id / a")).toBe("/clients/id%20%2F%20a");
     expect(businessHref("id / a")).toBe("/businesses/id%20%2F%20a");

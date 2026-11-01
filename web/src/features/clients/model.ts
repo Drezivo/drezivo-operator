@@ -24,6 +24,8 @@ export type ClientSummary = {
   member_counts: { active: number; suspended: number; removed: number };
   /** A proof of subscription payment is waiting for review. */
   pending_payment: boolean;
+  /** Latest sign-in of any active member; null when unknown or never. Absent from older APIs. */
+  last_signed_in_at?: string | null;
 };
 
 export type StaffProfile = { email: string | null; name: string | null; last_sign_in_at: string | null; banned: boolean; locked: boolean };
