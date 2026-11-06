@@ -38,7 +38,7 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
   const tenantB = '22222222-2222-4222-8222-222222222222';
   const memberA = '33333333-3333-4333-8333-333333333333';
   let keySeq = 0;
-  const ctx = (reason = 'integration test'): CommandContext => ({
+  const ctx = (reason = 'integration test'): CommandContext & { reason: string } => ({
     operatorSubject: 'user_operator', idempotencyKey: `it-key-${Date.now()}-${keySeq++}`, requestId: 'req-it', reason,
   });
   const count = async (sql: string, params: unknown[] = []) => Number((await admin.query<{ n: string }>(sql, params)).rows[0]?.n ?? 0);

@@ -29,7 +29,7 @@ export function BackButton({ onBack }: { onBack: () => void }) {
   return <button className="text-button client-back" type="button" onClick={onBack}><ArrowLeft size={15} /> All businesses</button>;
 }
 
-export function MemberRow({ member, busy, pending, onAction }: { member: ClientMember; busy: boolean; pending: string | null; onAction: (action: "suspend" | "reactivate", reason: string) => Promise<boolean> }) {
+export function MemberRow({ member, busy, pending, onAction }: { member: ClientMember; busy: boolean; pending: string | null; onAction: (action: "suspend" | "reactivate", reason?: string) => Promise<boolean> }) {
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const action = member.status === "active" ? "suspend" : member.status === "suspended" ? "reactivate" : null;
@@ -44,21 +44,22 @@ export function MemberRow({ member, busy, pending, onAction }: { member: ClientM
       <div><dt>Added</dt><dd>{formatManila(member.created_at)}</dd></div>
     </dl>
     <div className="row-actions">{action && !open && <button className="table-action" type="button" disabled={busy} onClick={() => setOpen(true)}>{action === "suspend" ? "Suspend" : "Reactivate"}</button>}</div>
-    {action && open && <form className="row-form" onSubmit={async (event) => { event.preventDefault(); if (busy || reason.trim().length < 3) return; if (await onAction(action, reason.trim())) { setOpen(false); setReason(""); } }}>
-      <label>Reason<textarea required minLength={3} maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
+    {action && open && <form className="row-form" onSubmit={async (event) => { event.preventDefault(); const text = reason.trim(); if (busy || (text.length > 0 && text.length < 3)) return; if (await onAction(action, text || undefined)) { setOpen(false); setReason(""); } }}>
+      <label>Reason (optional)<span className="field-hint">Saved in the activity log when provided.</span><textarea maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
       <span><button className="text-button" type="button" disabled={busy} onClick={() => { setOpen(false); setReason(""); }}>Cancel</button>
-        <button className={`button ${action === "suspend" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || reason.trim().length < 3}>{pending === intent ? "Saving…" : action === "suspend" ? "Confirm suspend" : "Confirm reactivate"}</button></span>
+        <button className={`button ${action === "suspend" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || (reason.trim().length > 0 && reason.trim().length < 3)}>{pending === intent ? "Saving…" : action === "suspend" ? "Confirm suspend" : "Confirm reactivate"}</button></span>
     </form>}
   </li>;
 }
 
 type FieldValues = Record<string, string | undefined>;
 
-export function ActionCard({ id, open, onToggle, title, description, submitLabel, tone = "default", busy, pending, fields, onSubmit }: {
+export function ActionCard({ id, open, onToggle, title, description, submitLabel, tone = "default", busy, pending, fields, onSubmit, submitDisabled }: {
   id: string; open: boolean; onToggle: (id: string | null) => void;
   title: string; description: string; submitLabel: string; tone?: "default" | "danger"; busy: boolean; pending: boolean;
   fields?: (values: FieldValues, set: (name: string, value: string) => void) => ReactNode;
-  onSubmit: (reason: string, values: FieldValues) => Promise<boolean>;
+  onSubmit: (reason: string | undefined, values: FieldValues) => Promise<boolean>;
+  submitDisabled?: boolean;
 }) {
   const [values, setValues] = useState<FieldValues>({});
   const [reason, setReason] = useState("");
@@ -66,8 +67,9 @@ export function ActionCard({ id, open, onToggle, title, description, submitLabel
   const close = () => { setReason(""); setValues({}); onToggle(null); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (busy || reason.trim().length < 3) return;
-    if (await onSubmit(reason.trim(), values)) { setReason(""); setValues({}); }
+    const text = reason.trim();
+    if (busy || (text.length > 0 && text.length < 3)) return;
+    if (await onSubmit(text || undefined, values)) { setReason(""); setValues({}); }
   };
   return <section className={`panel action-card ${tone === "danger" ? "action-danger" : ""} ${open ? "is-open" : ""}`}>
     <h3><button type="button" className="action-toggle" aria-expanded={open} aria-controls={formId} disabled={busy && !open} onClick={() => (open ? close() : onToggle(id))}>
@@ -76,10 +78,10 @@ export function ActionCard({ id, open, onToggle, title, description, submitLabel
     <p className="muted panel-intro">{description}</p>
     {open && <form id={formId} className="action-form" onSubmit={submit}>
       {fields?.(values, (name, value) => setValues((current) => ({ ...current, [name]: value })))}
-      <label>Reason<span className="field-hint">Saved in the activity log</span><textarea required minLength={3} maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus /></label>
+      <label>Reason (optional)<span className="field-hint">Saved in the activity log when provided.</span><textarea maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus /></label>
       <div className="action-buttons">
         <button type="button" className="text-button" disabled={busy} onClick={close}>Cancel</button>
-        <button className={`button ${tone === "danger" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || reason.trim().length < 3}>
+        <button className={`button ${tone === "danger" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || submitDisabled === true || (reason.trim().length > 0 && reason.trim().length < 3)}>
           {pending ? <><CircleNotch className="spin" size={15} /> Saving…</> : submitLabel}
         </button>
       </div>

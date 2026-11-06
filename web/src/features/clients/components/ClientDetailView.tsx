@@ -6,7 +6,7 @@ import { useCachedLoad } from "@/shared/api/view-cache";
 import { MutationGuard } from "@/shared/api/mutations";
 import { clientPaths } from "@/features/clients/api";
 import { clientAttention, clientState, clientStateLabel, clientStateTone, type ClientDetail, type ClientCommandResult } from "@/features/clients/model";
-import { formatManila, manilaDateInput, endOfManilaDay } from "@/shared/lib/format";
+import { formatManila, formatPeso, manilaDateInput, endOfManilaDay } from "@/shared/lib/format";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "@/shared/ui/StatePanels";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
 import { PaymentReviewList } from "@/features/payments/components/PaymentReview";
@@ -53,7 +53,18 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
   const state = clientState(client);
   const busy = pending !== null;
   const locked = state === "locked";
+  const planOptions = client.plan_options ?? [];
   const canSetTrial = subscription !== null && subscription.plan_code !== "free" && subscription.status !== "active" && subscription.status !== "cancelled";
+  const canChangePlan = state === "trial" && subscription?.status === "trialing" && subscription.plan_code !== "free" && !client.pending_payment;
+  const planChangeDescription = subscription?.plan_code === "free"
+    ? "Free plan upgrades must go through the payment workflow. Approve the owner’s payment under Payments."
+    : state === "trial"
+      ? client.pending_payment
+        ? "A payment is waiting for review. Resolve it before changing the trial plan."
+        : "Plan changes apply during an active trial when current usage fits the selected plan limits. No paid access is granted."
+      : locked
+        ? "Unlock the business before changing its plan."
+      : "Plan changes after the trial require the existing payment workflow. This action will not change a paid or restricted subscription.";
   const canExtendViewOnly = state === "view_only" || state === "expired";
   const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
   const now = Date.now();
@@ -119,6 +130,17 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
       </div>
 
       <aside className="client-side" aria-label="Actions">
+        {subscription && subscription.status !== "cancelled" && <ActionCard id="plan" open={openAction === "plan"} onToggle={setOpenAction} title="Change subscription plan"
+          description={planOptions.length ? planChangeDescription : "The active plan catalog is unavailable. Refresh the business details before changing its plan."} submitLabel="Save plan" busy={busy} pending={pending === "plan"} submitDisabled={!canChangePlan || planOptions.length === 0}
+          fields={(values, set) => <label>Plan<select required value={values.plan_code ?? subscription.plan_code} disabled={!canChangePlan || planOptions.length === 0} onChange={(event) => set("plan_code", event.target.value)}>
+            {!planOptions.some((plan) => plan.plan_code === subscription.plan_code) && <option value={subscription.plan_code}>{subscription.plan_code}</option>}
+            {planOptions.map((plan) => <option key={plan.plan_code} value={plan.plan_code}>{plan.name} · {formatPeso(String(plan.monthly_price_minor), plan.currency)}/month</option>)}
+          </select></label>}
+          onSubmit={(reason, values) => {
+            const planCode = values.plan_code ?? subscription.plan_code;
+            return run("plan", clientPaths.plan(tenantId), { plan_code: planCode, reason }, "Subscription plan saved.");
+          }} />}
+
         {subscription && subscription.plan_code !== "free" && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={subscription.status === "active" ? "Extend paid period" : "Record a payment"}
           description="Only for a payment the owner did not send through Subscribe (for example cash). Proofs sent in the app are approved under Payments. Pick the last day it covers."
           submitLabel={subscription.status === "active" ? "Save paid period" : "Mark as paid"} busy={busy} pending={pending === "activate"}

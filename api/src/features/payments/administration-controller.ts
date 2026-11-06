@@ -1,10 +1,10 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from "express";
 import type { z } from "zod";
 import { AppError } from "../../shared/http/errors.js";
-import { createHash } from "node:crypto";
+import { commandRequestFingerprint } from "../../shared/idempotency.js";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "../clients/repository/clerk-directory.js";
 import { tenantAdminPermissions } from "../../shared/auth/operator-permission-codes.js";
-import { uuid, idempotencyKey, reason, profileInputSchema, reasonInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "../clients/administration/contracts.js";
+import { uuid, idempotencyKey, reasonInputSchema, ownerVisibleReasonInputSchema, profileInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "../clients/administration/contracts.js";
 import type { TenantDetail, CommandContext, CommandResult, TenantAdminPort, ProofLinkSigner } from "../clients/administration/contracts.js";
 
 type Options = {
@@ -25,12 +25,12 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
   if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', message);
   return parsed.data;
 }
-function context(req: Request, res: Response, reasonText: string): CommandContext {
+function context(req: Request, res: Response, reasonText?: string): CommandContext {
   const key = req.get('Idempotency-Key');
   if (!key || !idempotencyKey.safeParse(key).success) throw new AppError(400, 'VALIDATION_FAILED', 'A valid idempotency key is required.');
   const subject = res.locals.operatorPrincipal?.clerkUserId;
   if (typeof subject !== 'string' || subject.length === 0) throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
-  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestId(res), reason: reasonText, requestFingerprint: createHash('sha256').update(JSON.stringify(req.body, Object.keys(req.body as object).sort())).digest('hex') };
+  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestId(res), reason: reasonText ?? null, requestFingerprint: commandRequestFingerprint(req.body, reasonText) };
 }
 function send(res: Response, status: number, data: unknown): void {
   res.status(status).setHeader('Cache-Control', 'no-store').json({ success: true, data, request_id: requestId(res) });
@@ -84,9 +84,9 @@ export function createPaymentAdministrationController(
       try {
         const tenantId = tenantIdParam(req);
         const paymentId = paymentIdParam(req);
-        const input = parse(reasonInputSchema, req.body, decision === 'reject'
+        const input = parse(decision === 'reject' ? ownerVisibleReasonInputSchema : reasonInputSchema, req.body, decision === 'reject'
           ? 'Say why the payment was not approved (3 to 500 characters). The business owner sees this.'
-          : 'A reason of 3 to 500 characters is required, for example "Reference matched".');
+          : 'Provide a valid reason if one is needed.');
         send(res, 200, await command(await service.reviewPayment(tenantId, paymentId, decision, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
     },

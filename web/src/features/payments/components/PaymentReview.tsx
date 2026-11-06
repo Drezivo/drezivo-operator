@@ -43,14 +43,15 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
 
   async function review(payment: SubscriptionPayment, decision: Decision) {
     const text = reason.trim();
-    if (guard.current.isPending || text.length < 3) return;
+    if (guard.current.isPending || (decision === "reject" && text.length < 3) || (text.length > 0 && text.length < 3)) return;
     const intent = `payment:${payment.payment_id}:${decision}`;
     const path = paymentPaths.reviewPayment(payment.tenant_id, payment.payment_id, decision);
     setError(null);
     setPending(intent);
     try {
-      const result = await guard.current.run(intent, { path, reason: text }, async (idempotencyKey) =>
-        apiRequest<ClientCommandResult>(path, { method: "POST", token: await token(), body: { reason: text }, idempotencyKey }));
+      const body = text ? { reason: text } : {};
+      const result = await guard.current.run(intent, { path, body }, async (idempotencyKey) =>
+        apiRequest<ClientCommandResult>(path, { method: "POST", token: await token(), body, idempotencyKey }));
       if (!result) return;
       setOpen(null);
       setReason("");
@@ -109,13 +110,13 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
             </>}
           </div>
           {reviewing && <form className="row-form" onSubmit={(event) => { event.preventDefault(); void review(payment, reviewing); }}>
-            <label>{reviewing === "approve" ? "What you checked" : "Reason for the owner"}
-              <span className="field-hint">{reviewing === "approve" ? "For example: reference matched in GCash. Saved in the activity log." : "The owner sees this in the app; an email notification is queued."}</span>
-              <textarea required minLength={3} maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus />
+            <label>{reviewing === "approve" ? "What you checked (optional)" : "Reason for the owner"}
+              <span className="field-hint">{reviewing === "approve" ? "Saved in the activity log when provided." : "The owner sees this in the app; an email notification is queued."}</span>
+              <textarea required={reviewing === "reject"} minLength={reviewing === "reject" ? 3 : undefined} maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus />
             </label>
             <span>
               <button className="text-button" type="button" disabled={busy} onClick={() => { setOpen(null); setReason(""); }}>Cancel</button>
-              <button className={`button ${reviewing === "reject" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || reason.trim().length < 3}>
+              <button className={`button ${reviewing === "reject" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || (reviewing === "reject" && reason.trim().length < 3) || (reason.trim().length > 0 && reason.trim().length < 3)}>
                 {busy ? "Saving…" : reviewing === "approve" ? "Approve payment" : "Reject payment"}
               </button>
             </span>
