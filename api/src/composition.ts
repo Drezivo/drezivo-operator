@@ -3,6 +3,7 @@ import { config, isBusinessUserDirectoryConfigured, isClerkConfigured, isDevelop
 import { createConfiguredAuthorizationPort } from './shared/auth/operator-authorization.js';
 import { createRateLimitMiddleware } from './shared/http/rate-limit.js';
 import { createTenantAdminDbAdapter } from './features/clients/repository/admin.js';
+import { createBusinessPlanCommandAdapter } from './features/clients/administration/repository/business-plan-command.js';
 import { createBusinessUserDirectory, emptyBusinessUserDirectory, type BusinessUserDirectory } from './features/clients/repository/clerk-directory.js';
 import { createProofLinkSigner } from './features/payments/proof-link.js';
 import { createPlatformPaymentsDbAdapter } from './features/payment-methods/repository/postgres.js';
@@ -49,6 +50,9 @@ const serviceOptions = isInternalServiceConfigured()
   }
   : null;
 const operatorAssertion = serviceOptions ? { ...serviceOptions, operatorAssertionSecret: config.INTERNAL_OPERATOR_ASSERTION_SECRET } : null;
+const tenantAdminPlanCommands: TenantAdminPort = operatorAssertion && isTenantAdminConfigured()
+  ? { ...configuredTenantAdminPort, ...createBusinessPlanCommandAdapter(operatorAssertion, configuredTenantAdminPort) }
+  : configuredTenantAdminPort;
 const configuredConsolePorts: Partial<ConsolePorts> = isTenantAdminConfigured()
   ? createConsoleDbAdapter({
     connectionString: config.OPERATOR_TENANT_ADMIN_DATABASE_URL!,
@@ -73,7 +77,7 @@ const consolePorts: Partial<ConsolePorts> = {
 export const app = createApp({
   protectedRateLimit: createRateLimitMiddleware(),
   authorizationPort: createConfiguredAuthorizationPort(),
-  tenantAdminPort: configuredTenantAdminPort,
+  tenantAdminPort: tenantAdminPlanCommands,
   businessUserDirectory: configuredBusinessUserDirectory,
   proofLink: configuredProofLink,
   platformPaymentsPort: configuredPlatformPaymentsPort,

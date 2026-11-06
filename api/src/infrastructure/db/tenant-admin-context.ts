@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { AppError } from '../../shared/http/errors.js';
-import type { CommandContext, CommandResult, SubscriptionPaymentRow, TenantDetail, TenantMember, TenantNote, TenantSummary } from '../../features/clients/administration/index.js';
+import type { CommandContext, CommandResult, PlanOption, SubscriptionPaymentRow, TenantDetail, TenantMember, TenantNote, TenantSummary } from '../../features/clients/administration/index.js';
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
 type TenantRow = { id: string; name: string; slug: string; status: TenantSummary['status']; timezone: string; created_at: Date };
@@ -160,6 +160,14 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
           WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT ${NOTE_LIMIT}`,
         [tenant.id],
       )).rows.map((row): TenantNote => ({ id: row.id, body: row.body, author_label: row.author_label, created_at: row.created_at.toISOString() })),
+      plan_options: (await client.query<{ code: string; monthly_minor: number; currency: string }>(
+        "SELECT code, monthly_minor, currency FROM plan WHERE active IS TRUE AND version = 1 AND code <> 'free' ORDER BY monthly_minor, code",
+      )).rows.map((row): PlanOption => ({
+        plan_code: row.code,
+        name: ({ starter: 'Starter', standard: 'Standard', growth: 'Growth', scale: 'Scale' } as Record<string, string>)[row.code] ?? row.code,
+        monthly_price_minor: row.monthly_minor,
+        currency: row.currency,
+      })),
       payments: await paymentsOf(client, tenant, TENANT_PAYMENT_LIMIT),
     };
   }

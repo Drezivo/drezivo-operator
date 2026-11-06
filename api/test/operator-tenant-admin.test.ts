@@ -20,7 +20,7 @@ const result = { tenant: detail, changed: true, replayed: false };
 
 function port(overrides: Partial<TenantAdminPort> = {}): TenantAdminPort {
   return {
-    listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, updateProfile: async () => result, setTenantLocked: async () => result,
+    listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, changeSubscriptionPlan: async () => result, updateProfile: async () => result, setTenantLocked: async () => result,
     setMemberSuspended: async () => result, setTrialEnd: async () => result, activateSubscription: async () => result,
     extendReadOnly: async () => result, addNote: async () => result, listPayments: async () => [], listTenantPayments: async () => [], reviewPayment: async () => result, ...overrides,
   };
@@ -121,17 +121,17 @@ describe('operator tenant administration boundary', () => {
     expect(calls).toHaveLength(7);
     for (const call of calls) {
       expect(call.ctx).toMatchObject({ operatorSubject: 'user_operator', idempotencyKey: key, requestId: 'req' });
-      expect(call.ctx.reason.length).toBeGreaterThan(2);
+      expect(call.ctx.reason?.length).toBeGreaterThan(2);
     }
   });
 
-  it('rejects commands without a valid idempotency key, reason, or bounded date before calling the port', async () => {
+  it('rejects invalid keys, malformed optional reasons, and unbounded dates before calling the port', async () => {
     let called = false;
     const p = port({ setTenantLocked: async () => { called = true; return result; }, setTrialEnd: async () => { called = true; return result; }, activateSubscription: async () => { called = true; return result; } });
     const a = app(p);
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).send({ reason: 'Unpaid invoice' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', 'short').send({ reason: 'Unpaid' })).body.error.code).toBe('VALIDATION_FAILED');
-    expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({})).body.error.code).toBe('VALIDATION_FAILED');
+    expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({ reason: 'ok' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({ reason: 'ok reason', extra: true })).body.error.code).toBe('VALIDATION_FAILED');
     const past = await request(a).post(`/api/v1/tenants/${tenantId}/trial`).set('Idempotency-Key', key).send({ trial_ends_at: '2026-09-01T00:00:00Z', reason: 'extend' });
     expect(past.body.error.code).toBe('VALIDATION_FAILED');
@@ -142,6 +142,56 @@ describe('operator tenant administration boundary', () => {
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/profile`).set('Idempotency-Key', key).send({ reason: 'nothing to change' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/profile`).set('Idempotency-Key', key).send({ timezone: 'Mars/Olympus', reason: 'bad zone' })).body.error.code).toBe('VALIDATION_FAILED');
     expect(called).toBe(false);
+  });
+
+  it('accepts omitted reasons on internal client actions and passes a null audit reason', async () => {
+    const reasons: Array<string | null> = [];
+    const record = async (...args: unknown[]) => { reasons.push((args.at(-1) as CommandContext).reason); return result; };
+    const a = app(port({ setTenantLocked: record, updateProfile: record, changeSubscriptionPlan: record }));
+    const send = (path: string, body: object) => request(a).post(`/api/v1/tenants/${tenantId}${path}`).set('Idempotency-Key', key).send(body);
+    expect((await send('/lock', {})).status).toBe(200);
+    expect((await send('/profile', { name: 'Luna Rental House' })).status).toBe(200);
+    expect((await send('/plan', { plan_code: 'standard' })).status).toBe(200);
+    expect(reasons).toEqual([null, null, null]);
+  });
+
+  it('accepts all paid plan tiers and rejects Free or unknown direct changes', async () => {
+    const selected: string[] = [];
+    const a = app(port({
+      changeSubscriptionPlan: async (_tenantId, planCode, _context) => {
+        selected.push(planCode);
+        return result;
+      },
+    }));
+    for (const [index, planCode] of (['starter', 'standard', 'growth', 'scale'] as const).entries()) {
+      const response = await request(a)
+        .post(`/api/v1/tenants/${tenantId}/plan`)
+        .set('Idempotency-Key', `paid-plan-command-${index.toString().padStart(4, '0')}`)
+        .send({ plan_code: planCode });
+      expect(response.status).toBe(200);
+    }
+    for (const [index, planCode] of (['free', 'enterprise'] as const).entries()) {
+      const response = await request(a)
+        .post(`/api/v1/tenants/${tenantId}/plan`)
+        .set('Idempotency-Key', `invalid-plan-command-${index.toString().padStart(4, '0')}`)
+        .send({ plan_code: planCode });
+      expect(response.status).toBe(400);
+    }
+    expect(selected).toEqual(['starter', 'standard', 'growth', 'scale']);
+  });
+
+  it('normalizes blank optional reasons to the same idempotent request fingerprint as an omitted reason', async () => {
+    const fingerprints: Array<string | undefined> = [];
+    const a = app(port({ setTenantLocked: async (...args: unknown[]) => {
+      fingerprints.push((args.at(-1) as CommandContext).requestFingerprint);
+      return result;
+    } }));
+    const send = (body: object) => request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send(body);
+
+    expect((await send({})).status).toBe(200);
+    expect((await send({ reason: '   ' })).status).toBe(200);
+    expect(fingerprints[0]).toBeDefined();
+    expect(fingerprints[1]).toBe(fingerprints[0]);
   });
 
   it('requires a verified operator and the manage permission for commands', async () => {
@@ -175,11 +225,13 @@ describe('operator tenant administration boundary', () => {
     expect((await send('/notes', { body: 'Called the owner about GCash.' })).status).toBe(200);
     expect((await send(`/subscription-payments/${paymentId}/approve`, { reason: 'Reference matched' })).status).toBe(200);
     expect((await send(`/subscription-payments/${paymentId}/reject`, { reason: 'Amount was 200, not 300' })).status).toBe(200);
+    expect((await send(`/subscription-payments/${paymentId}/approve`, {})).status).toBe(200);
 
     expect(calls[0]).toEqual(['extend', tenantId, new Date('2026-10-15T00:00:00Z'), expect.objectContaining({ reason: 'Owner paying next week' })]);
     expect(calls[1]).toEqual(['note', tenantId, 'Called the owner about GCash.', 'user_operator', expect.objectContaining({ idempotencyKey: key })]);
     expect(calls[2]).toEqual(['review', tenantId, paymentId, 'approve', expect.objectContaining({ reason: 'Reference matched' })]);
     expect(calls[3]).toEqual(['review', tenantId, paymentId, 'reject', expect.objectContaining({ reason: 'Amount was 200, not 300' })]);
+    expect(calls[4]).toEqual(['review', tenantId, paymentId, 'approve', expect.objectContaining({ reason: null })]);
   });
 
   it('validates pilot billing input before calling the port', async () => {
@@ -192,6 +244,7 @@ describe('operator tenant administration boundary', () => {
     expect((await send('/notes', { body: 'x'.repeat(2001) })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await send('/subscription-payments/not-a-uuid/approve', { reason: 'Reference matched' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await send(`/subscription-payments/${paymentId}/reject`, {})).body.error.message).toContain('owner sees this');
+    expect((await send(`/subscription-payments/${paymentId}/reject`, { reason: 'no' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).get('/api/v1/subscription-payments?status=everything')).body.error.code).toBe('VALIDATION_FAILED');
     expect(called).toBe(false);
   });

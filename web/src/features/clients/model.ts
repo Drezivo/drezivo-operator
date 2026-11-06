@@ -43,7 +43,8 @@ export function personLabel(member: ClientMember): { primary: string; secondary:
 export type ClientAuditEntry = { occurred_at: string; actor_kind: string; action: string; entity_type: string; outcome: string };
 /** Operator-only note; businesses never see these. */
 export type ClientNote = { id: string; body: string; author_label: string; created_at: string };
-export type ClientDetail = ClientSummary & { members: ClientMember[]; recent_audit: ClientAuditEntry[]; notes: ClientNote[]; payments: SubscriptionPayment[] };
+export type ClientPlanOption = { plan_code: string; name: string; monthly_price_minor: number; currency: string };
+export type ClientDetail = ClientSummary & { members: ClientMember[]; recent_audit: ClientAuditEntry[]; notes: ClientNote[]; payments: SubscriptionPayment[]; plan_options?: ClientPlanOption[] };
 export type ClientCommandResult = { tenant: ClientDetail; changed: boolean; replayed: boolean };
 
 /** Pilot billing timings; the business API is authoritative (api/src/modules/billing/access.ts). */
