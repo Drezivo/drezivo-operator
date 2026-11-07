@@ -5,6 +5,7 @@ import { AppError } from '../src/shared/http/errors.js';
 import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSigner, type SubscriptionPaymentRow, type TenantAdminPort, type TenantDetail } from '../src/features/clients/administration/index.js';
 import { createSubscriptionAdministrationRouter } from '../src/features/subscriptions/administration-routes.js';
 import { createPaymentAdministrationRouter } from '../src/features/payments/routes.js';
+import { logger } from '../src/shared/logging/logger.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const membershipId = '650e8400-e29b-41d4-a716-446655440000';
@@ -302,6 +303,8 @@ describe('operator tenant administration boundary', () => {
       expect(result.headers['cache-control']).toContain('no-store');
       expect(result.body.toString()).toBe('proof-bytes');
       expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ 'X-Request-ID': 'req' });
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
     } finally { fetchMock.mockRestore(); }
   });
 
@@ -334,5 +337,36 @@ describe('operator tenant administration boundary', () => {
       expect(JSON.stringify(result.body)).not.toContain('private-token');
       expect(JSON.stringify(result.body)).not.toContain('sensitive upstream message');
     } finally { fetchMock.mockRestore(); }
+  });
+
+  it.each([
+    ['upstream_http_error', new Response('sensitive data', { status: 503 })],
+    ['invalid_upstream_response', new Response('sensitive data', { status: 200, headers: { 'content-type': 'text/html' } })],
+  ])('logs safe diagnostics for %s', async (reason, upstream) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(upstream);
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(503);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: 'api.payment_proof.failed', request_id: 'req', reason, upstream_status: upstream.status }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-token|sensitive data/);
+    } finally { fetchMock.mockRestore(); log.mockRestore(); }
+  });
+
+  it.each(['network_failure', 'timeout'])('logs %s without the upstream error text', async (reason) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const controller = new AbortController();
+    if (reason === 'timeout') controller.abort();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('secret private-token'));
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(503);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ request_id: 'req', reason }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|private-token/);
+      expect(timeout).toHaveBeenCalledWith(75_000);
+    } finally { timeout.mockRestore(); fetchMock.mockRestore(); log.mockRestore(); }
   });
 });

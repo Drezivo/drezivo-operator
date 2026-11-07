@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiRequest, ApiError, withCursor } from "@/shared/api/client";
+import { apiBlobRequest, apiRequest, ApiError, withCursor } from "@/shared/api/client";
 
 const envelope = (data: unknown) => ({ success: true, data, request_id: "req_test_01" });
 const failed = (code: string, message: string) => ({ success: false, error: { code, message }, request_id: "req_test_02" });
@@ -166,6 +166,16 @@ describe("apiRequest", () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await timeoutAssertion;
     vi.useRealTimers();
+  });
+
+  it("allows a proof download to finish after the normal request timeout", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+      setTimeout(() => resolve(new Response("proof", { headers: { "Content-Type": "image/png" } })), 15_000);
+    })));
+    const request = apiBlobRequest("/proof", { token: "signed-session-token", timeoutMs: 90_000 });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect((await request).type).toBe("image/png");
   });
 
   it("preserves caller cancellation so navigation does not show an error", async () => {

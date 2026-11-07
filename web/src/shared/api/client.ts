@@ -119,7 +119,7 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
  * Binary GET (for example a QR image) with the same base URL, HTTPS rule, session token and timeout
  * as `apiRequest`. Failures still arrive as the JSON error envelope.
  */
-export async function apiBlobRequest(path: string, options: Pick<ApiOptions, "token" | "signal"> = {}): Promise<Blob> {
+export async function apiBlobRequest(path: string, options: Pick<ApiOptions, "token" | "signal"> & { timeoutMs?: number } = {}): Promise<Blob> {
   if (!path.startsWith("/") || path.startsWith("//")) throw new ApiError("The requested resource path is invalid.", "invalid_response");
   if (typeof options.token !== "string" || options.token.trim().length === 0) {
     throw new ApiError("Authentication is required.", "unauthorized", 401, "AUTHENTICATION_REQUIRED");
@@ -129,7 +129,7 @@ export async function apiBlobRequest(path: string, options: Pick<ApiOptions, "to
   const abortFromCaller = () => controller.abort();
   if (options.signal?.aborted) controller.abort();
   else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
-  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, API_REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs ?? API_REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(`${apiBase()}${path}`, {
       headers: { Authorization: `Bearer ${options.token}` },

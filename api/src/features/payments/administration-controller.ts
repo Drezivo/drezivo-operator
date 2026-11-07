@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream } from "node:stream/web";
+import { logger } from "../../shared/logging/logger.js";
 import { AppError } from "../../shared/http/errors.js";
 import { commandRequestFingerprint } from "../../shared/idempotency.js";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "../clients/repository/clerk-directory.js";
@@ -94,13 +95,26 @@ export function createPaymentAdministrationController(
       } catch (error) { forward(next, error); }
     },
     proof: async (req: Request, res: Response, next: NextFunction) => {
+      const signal = AbortSignal.timeout(75_000);
+      let failureLogged = false;
+      const logFailure = (reason: string, upstreamStatus?: number) => {
+        failureLogged = true;
+        logger.error({ event: 'api.payment_proof.failed', request_id: requestId(res), dependency: 'business_api', reason, ...(upstreamStatus === undefined ? {} : { upstream_status: upstreamStatus }) }, 'Payment proof retrieval failed');
+      };
       try {
         const link = options.proofLink?.(tenantIdParam(req), paymentIdParam(req));
         if (!link) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Viewing payment proofs is not configured.');
-        const upstream = await fetch(link.url, { redirect: 'error', signal: AbortSignal.timeout(20_000) });
-        if (upstream.status === 404) throw new AppError(404, 'NOT_FOUND', 'This payment proof is unavailable.');
+        const upstream = await fetch(link.url, { redirect: 'error', signal, headers: { 'X-Request-ID': requestId(res) } });
+        if (upstream.status === 404) { logFailure('upstream_not_found', 404); await upstream.body?.cancel(); throw new AppError(404, 'NOT_FOUND', 'This payment proof is unavailable.'); }
         const type = upstream.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-        if (!upstream.ok || !upstream.body || !type || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type)) {
+        if (!upstream.ok) {
+          logFailure('upstream_http_error', upstream.status);
+          await upstream.body?.cancel();
+          throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'This payment proof is temporarily unavailable.');
+        }
+        if (!upstream.body || !type || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type)) {
+          logFailure('invalid_upstream_response', upstream.status);
+          await upstream.body?.cancel();
           throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'This payment proof is temporarily unavailable.');
         }
         res.setHeader('Content-Type', type);
@@ -110,6 +124,7 @@ export function createPaymentAdministrationController(
         res.setHeader('Referrer-Policy', 'no-referrer');
         await pipeline(Readable.fromWeb(upstream.body as ReadableStream), res);
       } catch (error) {
+        if (!failureLogged && !(error instanceof AppError)) logFailure(signal.aborted ? 'timeout' : res.headersSent ? 'stream_failure' : 'network_failure');
         if (res.headersSent) { res.destroy(); return; }
         forward(next, error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'This payment proof is temporarily unavailable.'));
       }
