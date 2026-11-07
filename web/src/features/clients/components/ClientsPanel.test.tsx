@@ -339,17 +339,20 @@ describe("ClientsPanel", () => {
     expect(screen.getByText("Approved")).toBeInTheDocument();
   });
 
-  it("fetches a proof link on demand and shows it as a link that opens in a new tab", async () => {
+  it("opens the payment proof in a lightbox", async () => {
     const withPayment = { ...detail, payments: [pendingPayment] };
-    mockFetch((url) => url.endsWith("/proof-link")
-      ? envelope({ url: "https://api.example/api/v1/operator/payment-proofs/p1.token", expires_at: "2026-10-01T02:05:00Z" })
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+    URL.createObjectURL = vi.fn(() => "blob:proof");
+    URL.revokeObjectURL = vi.fn();
+    mockFetch((url) => url.endsWith("/proof")
+      ? new Response("image bytes", { headers: { "Content-Type": "image/png" } })
       : url.endsWith("/tenants") ? envelope({ items: [withPayment] }) : envelope(withPayment));
     render(<Harness initial={{ client: tenantId }} />);
     fireEvent.click(await screen.findByRole("button", { name: "View proof" }));
-    const link = await screen.findByRole("link", { name: /Open proof/ });
-    expect(link).toHaveAttribute("href", "https://api.example/api/v1/operator/payment-proofs/p1.token");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(await screen.findByRole("img", { name: "Payment proof" })).toHaveAttribute("src", "blob:proof");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:proof");
   });
 
   it("adds an operator note and extends view-only access to the end of a Manila day", async () => {

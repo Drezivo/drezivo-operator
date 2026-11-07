@@ -1,5 +1,8 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from "express";
 import type { z } from "zod";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream } from "node:stream/web";
 import { AppError } from "../../shared/http/errors.js";
 import { commandRequestFingerprint } from "../../shared/idempotency.js";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "../clients/repository/clerk-directory.js";
@@ -89,6 +92,27 @@ export function createPaymentAdministrationController(
           : 'Provide a valid reason if one is needed.');
         send(res, 200, await command(await service.reviewPayment(tenantId, paymentId, decision, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
+    },
+    proof: async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const link = options.proofLink?.(tenantIdParam(req), paymentIdParam(req));
+        if (!link) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Viewing payment proofs is not configured.');
+        const upstream = await fetch(link.url, { redirect: 'error', signal: AbortSignal.timeout(20_000) });
+        if (upstream.status === 404) throw new AppError(404, 'NOT_FOUND', 'This payment proof is unavailable.');
+        const type = upstream.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+        if (!upstream.ok || !upstream.body || !type || !['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type)) {
+          throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'This payment proof is temporarily unavailable.');
+        }
+        res.setHeader('Content-Type', type);
+        res.setHeader('Cache-Control', 'private, no-store');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Content-Disposition', 'inline');
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        await pipeline(Readable.fromWeb(upstream.body as ReadableStream), res);
+      } catch (error) {
+        if (res.headersSent) { res.destroy(); return; }
+        forward(next, error instanceof AppError ? error : new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'This payment proof is temporarily unavailable.'));
+      }
     },
     proofLink: (req: Request, res: Response, next: NextFunction) => {
     try {

@@ -22,5 +22,6 @@ export function createPaymentAdministrationRouter(
     router.post(`/tenants/:tenantId/subscription-payments/:paymentId/${decision}`, manage, controller.reviewPayment(decision));
   }
   router.get('/tenants/:tenantId/subscription-payments/:paymentId/proof-link', read, controller.proofLink);
+  router.get('/tenants/:tenantId/subscription-payments/:paymentId/proof', read, controller.proof);
   return router;
 }
