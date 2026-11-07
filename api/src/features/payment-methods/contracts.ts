@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AppError } from "../../shared/http/errors.js";
+import type { SafeOperatorPrincipal } from '../../shared/auth/operator-auth.js';
 
 /**
  * Drezivo's own payment methods (GCash, bank transfer, ...) that businesses pay the ₱300 Standard
@@ -24,7 +25,7 @@ export type PlatformPaymentMethod = {
   updated_at: string;
 };
 
-export type PlatformPaymentCommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string };
+export type PlatformPaymentCommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string; operatorPrincipal?: SafeOperatorPrincipal };
 export type PlatformPaymentCommandResult = { method: PlatformPaymentMethod; changed: boolean; replayed: boolean };
 export type QrImage = { bytes: Buffer; mime: QrMime };
 
@@ -38,7 +39,7 @@ export type PlatformPaymentMethodFields = {
 
 export type PlatformPaymentsPort = {
   list(): Promise<PlatformPaymentMethod[]>;
-  readQr(id: string): Promise<QrImage | null>;
+  readQr(id: string, principal?: SafeOperatorPrincipal): Promise<QrImage | null>;
   create(fields: PlatformPaymentMethodFields, qr: QrImage | null, context: PlatformPaymentCommandContext): Promise<PlatformPaymentCommandResult>;
   /** `qr` undefined keeps the stored image, null removes it. */
   update(id: string, version: number, fields: PlatformPaymentMethodFields, qr: QrImage | null | undefined, context: PlatformPaymentCommandContext): Promise<PlatformPaymentCommandResult>;

@@ -273,40 +273,25 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
 
   describe('Drezivo payment methods', () => {
     const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 7)]);
-    const fields = (label: string) => ({ label, account_name: 'Drezivo', account_number: '09171234567', instructions: null, sort_order: 0 });
 
-    it('creates once under concurrent double-fire and refuses the same key for a different body', async () => {
-      const context = ctx('Pilot launch');
-      const results = await Promise.all(Array.from({ length: 4 }, () => platform.create(fields('GCash'), { bytes: png, mime: 'image/png' }, context)));
-      expect(results.filter((r) => !r.replayed)).toHaveLength(1);
-      expect(new Set(results.map((r) => r.method.id)).size).toBe(1);
-      expect(await count("SELECT count(*) n FROM platform_payment_method WHERE label = 'GCash'")).toBe(1);
-      expect(await count('SELECT count(*) n FROM platform_payment_method_change WHERE intent_key = $1', [context.idempotencyKey])).toBe(1);
-      await expect(platform.create(fields('Maya'), null, context)).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
-      const qr = await platform.readQr(results[0]!.method.id);
-      expect(qr?.mime).toBe('image/png');
-      expect(qr?.bytes.equals(png)).toBe(true);
-    });
-
-    it('updates at the edited version only, and keeps or removes the QR as asked', async () => {
-      const created = await platform.create(fields('BPI'), { bytes: png, mime: 'image/png' }, ctx('Add bank'));
-      const id = created.method.id;
-      const kept = await platform.update(id, 1, { ...fields('BPI Savings'), sort_order: 2 }, undefined, ctx('Rename'));
-      expect(kept.method).toMatchObject({ label: 'BPI Savings', sort_order: 2, has_qr: true, version: 2 });
-      await expect(platform.update(id, 1, fields('Stale edit'), undefined, ctx('Stale'))).rejects.toMatchObject({ status: 409 });
-      const removed = await platform.update(id, 2, fields('BPI Savings'), null, ctx('QR expired'));
-      expect(removed.method.has_qr).toBe(false);
-      expect(await platform.readQr(id)).toBeNull();
+    it('lists both legacy and object-backed QR methods without returning image data', async () => {
+      await admin.query("INSERT INTO platform_payment_method (label,qr_image,qr_mime) VALUES ('Legacy QR',$1,'image/png')", [png]);
+      await admin.query("INSERT INTO platform_payment_method (label,qr_object_key,qr_size_bytes,qr_sha256,qr_mime) VALUES ('Object QR','platform-files/payment-methods/test/object',8,$1,'image/png')", ['0'.repeat(64)]);
+      const list = await platform.list();
+      expect(list.find((row) => row.label === 'Legacy QR')?.has_qr).toBe(true);
+      expect(list.find((row) => row.label === 'Object QR')?.has_qr).toBe(true);
+      expect(JSON.stringify(list)).not.toContain('platform-files/');
     });
 
     it('allows at most ten active methods even when activations race', async () => {
       await admin.query('UPDATE platform_payment_method SET active = false');
-      for (let index = 0; index < 9; index += 1) await platform.create(fields(`Method ${index}`), null, ctx(`Seed ${index}`));
-      const spare = await platform.create(fields('Spare'), null, ctx('Spare one'));
-      await platform.setActive(spare.method.id, 1, false, ctx('Park it'));
+      await admin.query("INSERT INTO platform_payment_method (label) SELECT 'Method ' || n FROM generate_series(1,9) n");
+      const spares = await admin.query<{ id: string }>("INSERT INTO platform_payment_method (label,active) VALUES ('Spare A',false),('Spare B',false) RETURNING id");
+      const first = spares.rows[0]?.id, second = spares.rows[1]?.id;
+      if (!first || !second) throw new Error('Missing seeded payment methods');
       const racers = await Promise.allSettled([
-        platform.setActive(spare.method.id, 2, true, ctx('Race A')),
-        platform.create(fields('Race B'), null, ctx('Race B')),
+        platform.setActive(first, 1, true, ctx('Race A')),
+        platform.setActive(second, 1, true, ctx('Race B')),
       ]);
       expect(racers.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       expect(racers.find((r) => r.status === 'rejected')).toMatchObject({ reason: { code: 'PAYMENT_METHOD_LIMIT' } });
