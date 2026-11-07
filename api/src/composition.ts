@@ -7,6 +7,7 @@ import { createBusinessPlanCommandAdapter } from './features/clients/administrat
 import { createBusinessUserDirectory, emptyBusinessUserDirectory, type BusinessUserDirectory } from './features/clients/repository/clerk-directory.js';
 import { createProofLinkSigner } from './features/payments/proof-link.js';
 import { createPlatformPaymentsDbAdapter } from './features/payment-methods/repository/postgres.js';
+import { createBusinessPlatformQrAdapter } from './features/payment-methods/repository/business-qr.js';
 import { createConsoleDbAdapter, type ConsolePorts } from './infrastructure/db/console-ports.js';
 import { createOperatorDirectory } from './features/operators/repository/clerk.js';
 import { createBusinessReadAdapter } from './features/clients/repository/internal.js';
@@ -34,7 +35,7 @@ const configuredBusinessUserDirectory: BusinessUserDirectory = isBusinessUserDir
   : emptyBusinessUserDirectory;
 
 // Same database login as business administration (ADR 0025); Drezivo's payment methods live there too.
-const configuredPlatformPaymentsPort: PlatformPaymentsPort = isTenantAdminConfigured()
+const configuredPlatformPaymentsPort: Pick<PlatformPaymentsPort, 'list' | 'setActive'> = isTenantAdminConfigured()
   ? createPlatformPaymentsDbAdapter({ connectionString: config.OPERATOR_TENANT_ADMIN_DATABASE_URL!, caCertificate: tenantAdminDatabaseCa() })
   : unavailablePlatformPaymentsPort;
 
@@ -50,6 +51,9 @@ const serviceOptions = isInternalServiceConfigured()
   }
   : null;
 const operatorAssertion = serviceOptions ? { ...serviceOptions, operatorAssertionSecret: config.INTERNAL_OPERATOR_ASSERTION_SECRET } : null;
+const platformPaymentsWithQr: PlatformPaymentsPort = operatorAssertion && isTenantAdminConfigured()
+  ? createBusinessPlatformQrAdapter(operatorAssertion, configuredPlatformPaymentsPort)
+  : { ...configuredPlatformPaymentsPort, readQr: unavailablePlatformPaymentsPort.readQr, create: unavailablePlatformPaymentsPort.create, update: unavailablePlatformPaymentsPort.update };
 const tenantAdminPlanCommands: TenantAdminPort = operatorAssertion && isTenantAdminConfigured()
   ? { ...configuredTenantAdminPort, ...createBusinessPlanCommandAdapter(operatorAssertion, configuredTenantAdminPort) }
   : configuredTenantAdminPort;
@@ -80,7 +84,7 @@ export const app = createApp({
   tenantAdminPort: tenantAdminPlanCommands,
   businessUserDirectory: configuredBusinessUserDirectory,
   proofLink: configuredProofLink,
-  platformPaymentsPort: configuredPlatformPaymentsPort,
+  platformPaymentsPort: platformPaymentsWithQr,
   consolePorts,
   corsOrigins: config.OPERATOR_CORS_ORIGINS,
   clerkWebhookSigningSecret: config.OPERATOR_CLERK_WEBHOOK_SIGNING_SECRET,

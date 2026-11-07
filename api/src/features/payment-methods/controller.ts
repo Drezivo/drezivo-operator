@@ -38,7 +38,7 @@ function context(req: Request, res: Response, reasonText: string): PlatformPayme
   if (!key || !idempotencyKey.safeParse(key).success) throw new AppError(400, 'VALIDATION_FAILED', 'A valid idempotency key is required.');
   const subject = res.locals.operatorPrincipal?.clerkUserId;
   if (typeof subject !== 'string' || subject.length === 0) throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
-  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestIdOf(res), reason: reasonText };
+  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestIdOf(res), reason: reasonText, operatorPrincipal: res.locals.operatorPrincipal };
 }
 function send(res: Response, status: number, data: unknown): void {
   res.status(status).setHeader('Cache-Control', 'no-store').json({ success: true, data, request_id: requestIdOf(res) });
@@ -72,7 +72,7 @@ export function createOperatorPlatformPaymentsController(
   },
     readQr: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const qr = await service.readQr(methodId(req));
+      const qr = await service.readQr(methodId(req), res.locals.operatorPrincipal);
       if (!qr) throw new AppError(404, 'NOT_FOUND', 'This payment method has no QR image.');
       res.status(200).set({ 'Content-Type': qr.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }).send(qr.bytes);
     } catch (error) { forward(next, error); }
