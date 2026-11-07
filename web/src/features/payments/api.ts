@@ -5,4 +5,6 @@ export const paymentPaths = {
     `/tenants/${encodeURIComponent(id)}/subscription-payments/${encodeURIComponent(paymentId)}/${decision}`,
   proofLink: (id: string, paymentId: string) =>
     `/tenants/${encodeURIComponent(id)}/subscription-payments/${encodeURIComponent(paymentId)}/proof-link`,
+  proof: (id: string, paymentId: string) =>
+    `/tenants/${encodeURIComponent(id)}/subscription-payments/${encodeURIComponent(paymentId)}/proof`,
 } as const;

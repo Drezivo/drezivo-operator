@@ -6,15 +6,12 @@ import {
   type PlatformPaymentCommandContext,
   type PlatformPaymentCommandResult,
   type PlatformPaymentMethod,
-  type PlatformPaymentMethodFields,
   type PlatformPaymentsPort,
-  type QrImage,
-  type QrMime,
 } from '../index.js';
 
 /**
- * Writes Drezivo's own payment methods in the business database (tables from business migration
- * 0063_pilot_billing), connecting as drezivo_app like the tenant-admin adapter (ADR 0025).
+ * Reads and activates Drezivo's own payment methods in the business database, connecting as
+ * drezivo_app like the tenant-admin adapter (ADR 0025). QR writes belong to the Business API.
  *
  * Duplicate safety: every write takes one transaction-scoped advisory lock (writes are rare), then
  * looks for its (operator, idempotency key) in platform_payment_method_change. A retry of the same
@@ -25,9 +22,9 @@ type MethodRow = {
   id: string; label: string; account_name: string | null; account_number: string | null; instructions: string | null;
   has_qr: boolean; active: boolean; sort_order: number; version: number; updated_at: Date;
 };
-type Action = 'created' | 'updated' | 'activated' | 'deactivated';
+type Action = 'activated' | 'deactivated';
 
-const COLUMNS = `id, label, account_name, account_number, instructions, (qr_image IS NOT NULL) AS has_qr,
+const COLUMNS = `id, label, account_name, account_number, instructions, (qr_image IS NOT NULL OR qr_object_key IS NOT NULL) AS has_qr,
   active, sort_order, version, updated_at`;
 const WRITE_LOCK = 'platform_payment_method_write';
 
@@ -39,12 +36,9 @@ const toMethod = (row: MethodRow): PlatformPaymentMethod => ({ ...row, updated_a
 function payloadHash(payload: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
-const qrFingerprint = (qr: QrImage | null | undefined) =>
-  qr === undefined ? 'keep' : qr === null ? 'none' : createHash('sha256').update(qr.bytes).digest('hex');
-
 export type PlatformPaymentsDbOptions = { connectionString: string; caCertificate?: string };
 
-export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptions): PlatformPaymentsPort & { close(): Promise<void> } {
+export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptions): Pick<PlatformPaymentsPort, 'list' | 'setActive'> & { close(): Promise<void> } {
   const pool = new pg.Pool({
     connectionString: options.connectionString,
     max: 2,
@@ -142,49 +136,6 @@ export function createPlatformPaymentsDbAdapter(options: PlatformPaymentsDbOptio
       return transaction(async (client) => (await client.query<MethodRow>(
         `SELECT ${COLUMNS} FROM platform_payment_method ORDER BY active DESC, sort_order, created_at, id`,
       )).rows.map(toMethod));
-    },
-
-    async readQr(id) {
-      return transaction(async (client) => {
-        const result = await client.query<{ qr_image: Buffer | null; qr_mime: QrMime | null }>(
-          'SELECT qr_image, qr_mime FROM platform_payment_method WHERE id = $1',
-          [id],
-        );
-        const row = result.rows[0];
-        return row?.qr_image && row.qr_mime ? { bytes: row.qr_image, mime: row.qr_mime } : null;
-      });
-    },
-
-    async create(fields: PlatformPaymentMethodFields, qr: QrImage | null, ctx) {
-      return command(ctx, 'created', null, { ...fields, qr: qrFingerprint(qr) }, async (client) => {
-        await assertRoomForActive(client);
-        const inserted = await client.query<{ id: string }>(
-          `INSERT INTO platform_payment_method (label, account_name, account_number, instructions, qr_image, qr_mime, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-          [fields.label, fields.account_name, fields.account_number, fields.instructions, qr?.bytes ?? null, qr?.mime ?? null, fields.sort_order],
-        );
-        const id = inserted.rows[0]?.id;
-        if (!id) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'The payment method could not be saved.');
-        return { id, changed: true };
-      });
-    },
-
-    async update(id, version, fields, qr, ctx) {
-      return command(ctx, 'updated', id, { version, ...fields, qr: qrFingerprint(qr) }, async (client) => {
-        await lockedAtVersion(client, id, version);
-        const keepQr = qr === undefined;
-        await client.query(
-          `UPDATE platform_payment_method
-              SET label = $2, account_name = $3, account_number = $4, instructions = $5, sort_order = $6,
-                  qr_image = CASE WHEN $7 THEN qr_image ELSE $8 END,
-                  qr_mime = CASE WHEN $7 THEN qr_mime ELSE $9 END,
-                  version = version + 1, updated_at = now()
-            WHERE id = $1`,
-          [id, fields.label, fields.account_name, fields.account_number, fields.instructions, fields.sort_order,
-            keepQr, keepQr ? null : qr?.bytes ?? null, keepQr ? null : qr?.mime ?? null],
-        );
-        return { id, changed: true };
-      });
     },
 
     async setActive(id, version, active, ctx) {

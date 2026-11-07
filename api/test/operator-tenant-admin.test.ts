@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/shared/http/errors.js';
 import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSigner, type SubscriptionPaymentRow, type TenantAdminPort, type TenantDetail } from '../src/features/clients/administration/index.js';
 import { createSubscriptionAdministrationRouter } from '../src/features/subscriptions/administration-routes.js';
@@ -290,5 +290,49 @@ describe('operator tenant administration boundary', () => {
     expect(on.status).toBe(200);
     expect(on.body.data.url).toBe('https://api.example/proof/p1.token');
     expect(signed).toEqual([`${tenantId}/${paymentId}`]);
+  });
+
+  it('streams an authorized proof without exposing its signed URL', async () => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('proof-bytes', { headers: { 'content-type': 'image/png' } }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(200);
+      expect(result.headers['content-type']).toBe('image/png');
+      expect(result.headers['cache-control']).toContain('no-store');
+      expect(result.body.toString()).toBe('proof-bytes');
+      expect(fetchMock).toHaveBeenCalledOnce();
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('does not fetch a proof when read access is denied', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const deny = () => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'Forbidden'));
+    try {
+      const result = await request(app(port(), deny)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it.each(['image/jpeg', 'image/webp', 'application/pdf'])('forwards supported proof format %s', async (contentType) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('proof', { headers: { 'content-type': contentType } }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(200);
+      expect(result.headers['content-type']).toBe(contentType);
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('does not expose an unavailable upstream proof or its URL', async () => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('sensitive upstream message', { status: 404 }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(404);
+      expect(JSON.stringify(result.body)).not.toContain('private-token');
+      expect(JSON.stringify(result.body)).not.toContain('sensitive upstream message');
+    } finally { fetchMock.mockRestore(); }
   });
 });

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { ArrowSquareOut, CircleNotch } from "@phosphor-icons/react";
 import { ApiError, apiRequest } from "@/shared/api/client";
 import { useCachedLoad } from "@/shared/api/view-cache";
 import { MutationGuard } from "@/shared/api/mutations";
@@ -13,10 +12,10 @@ import { getTokenWithTimeout } from "@/shared/auth/token";
 import { BusinessSelect } from "@/features/clients/components/BusinessSelect";
 import { EmptyPanel, LoadingPanel, RequestId, StatePanel } from "@/shared/ui/StatePanels";
 import { StatusBadge } from "@/shared/ui/StatusBadge";
+import { ProofLightbox } from "./ProofLightbox";
 
 type Decision = "approve" | "reject";
 type Token = () => Promise<string>;
-type ProofLink = { paymentId: string; url: string; expiresAt: string };
 
 const statusLabel: Record<SubscriptionPayment["status"], string> = { pending: "Waiting for review", verified: "Approved", failed: "Rejected" };
 const statusTone: Record<SubscriptionPayment["status"], string> = { pending: "pending", verified: "active", failed: "rejected" };
@@ -38,8 +37,7 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
   const [open, setOpen] = useState<{ paymentId: string; decision: Decision } | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<ApiError | null>(null);
-  const [proof, setProof] = useState<ProofLink | null>(null);
-  const [proofLoading, setProofLoading] = useState<string | null>(null);
+  const [proof, setProof] = useState<{ tenantId: string; paymentId: string } | null>(null);
 
   async function review(payment: SubscriptionPayment, decision: Decision) {
     const text = reason.trim();
@@ -63,29 +61,14 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
     }
   }
 
-  /** Links live 5 minutes, so one is fetched on demand and shown as a plain link to open. */
-  async function loadProof(payment: SubscriptionPayment) {
-    if (proofLoading) return;
-    setError(null);
-    setProofLoading(payment.payment_id);
-    try {
-      const result = await apiRequest<{ url: string; expires_at: string }>(paymentPaths.proofLink(payment.tenant_id, payment.payment_id), { token: await token() });
-      setProof({ paymentId: payment.payment_id, url: result.data.url, expiresAt: result.data.expires_at });
-    } catch (proofError) {
-      setError(proofError instanceof ApiError ? proofError : new ApiError("An unexpected error occurred.", "http"));
-    } finally {
-      setProofLoading(null);
-    }
-  }
-
   const busy = pending !== null;
   return <>
+    {proof && <ProofLightbox tenantId={proof.tenantId} paymentId={proof.paymentId} token={token} onClose={() => setProof(null)} />}
     {error && <StatePanel error={error} dependency="Business API" onRetry={() => setError(null)} />}
     <ul className="data-list payment-list" aria-label="Payments">
       <li className="data-list-head" aria-hidden="true">{showBusiness && <span>Business</span>}<span>Amount</span><span>Method</span><span>Reference</span><span>Sent</span><span>Status</span><span /></li>
       {payments.map((payment) => {
         const reviewing = open?.paymentId === payment.payment_id ? open.decision : null;
-        const link = proof?.paymentId === payment.payment_id ? proof : null;
         return <li key={payment.payment_id} className="data-row">
           <dl className="row-fields">
             {showBusiness && <div><dt>Business</dt><dd>{onOpenBusiness
@@ -99,11 +82,7 @@ export function PaymentReviewList({ payments, token, showBusiness = false, onRev
             {payment.review_note && <div className="fact-wide"><dt>Reason given</dt><dd>{payment.review_note}</dd></div>}
           </dl>
           <div className="row-actions payment-actions">
-            {payment.has_proof && (link
-              ? <a className="table-action" href={link.url} target="_blank" rel="noopener noreferrer">Open proof <ArrowSquareOut size={13} aria-hidden="true" /></a>
-              : <button type="button" className="table-action" disabled={proofLoading !== null} onClick={() => void loadProof(payment)}>
-                {proofLoading === payment.payment_id ? <><CircleNotch className="spin" size={13} /> Loading…</> : "View proof"}
-              </button>)}
+            {payment.has_proof && <button type="button" className="table-action" onClick={() => setProof({ tenantId: payment.tenant_id, paymentId: payment.payment_id })}>View proof</button>}
             {payment.status === "pending" && !reviewing && <>
               <button type="button" className="table-action" disabled={busy} onClick={() => { setOpen({ paymentId: payment.payment_id, decision: "approve" }); setReason(""); }}>Approve</button>
               <button type="button" className="table-action" disabled={busy} onClick={() => { setOpen({ paymentId: payment.payment_id, decision: "reject" }); setReason(""); }}>Reject</button>
