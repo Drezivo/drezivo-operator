@@ -21,6 +21,7 @@ describe("payment proof lightbox", () => {
     render(<ProofLightbox tenantId="tenant" paymentId="payment" token={token} onClose={vi.fn()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
     expect(await screen.findByTitle("Payment proof PDF")).toHaveAttribute("src", "blob:proof");
+    expect(apiBlobRequest).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ timeoutMs: 90_000 }));
   });
 
   it("closes on Escape", () => {

@@ -24,7 +24,7 @@ export function ProofLightbox({ tenantId, paymentId, token, onClose }: {
     setState("loading");
     void (async () => {
       try {
-        const blob = await apiBlobRequest(paymentPaths.proof(tenantId, paymentId), { token: await token(), signal: controller.signal });
+        const blob = await apiBlobRequest(paymentPaths.proof(tenantId, paymentId), { token: await token(), signal: controller.signal, timeoutMs: 90_000 });
         if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(blob.type)) throw new Error('Unsupported proof format');
         if (controller.signal.aborted) return;
         url = URL.createObjectURL(blob);
