@@ -3,9 +3,15 @@ import pg from 'pg';
 import type { SubscriptionPaymentRow, TenantAdminPort } from '../../clients/administration/index.js';
 import type { PaymentDbRow, TenantAdminDbContext } from '../../../infrastructure/db/tenant-admin-context.js';
 
-export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<TenantAdminPort, 'listPayments' | 'reviewPayment'> {
+export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<TenantAdminPort, 'listPayments' | 'listTenantPayments' | 'reviewPayment'> {
   const { operatorRead, command, subscriptionOf, liftLifecycleRestriction, conflict, notFound, paymentOf, PAYMENT_QUEUE_LIMIT } = context;
   return {
+    async listTenantPayments(tenantId) {
+      return context.transaction(tenantId, 'operator:read', async (client) => {
+        const tenant = await context.tenantRow(client, tenantId);
+        return tenant ? context.paymentsOf(client, tenant, context.PAYMENT_HISTORY_LIMIT) : null;
+      });
+    },
     async listPayments(filter) {
       // Oldest pending first so nobody waits longest; recent history newest first (ordered in SQL).
       const rows = await operatorRead(async (client) => {
@@ -19,6 +25,7 @@ export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<
     },
 
     async reviewPayment(tenantId, paymentId, decision, ctx) {
+      if (decision === 'reject' && !ctx.reason) throw conflict('A reason shown to the business owner is required to reject a payment.');
       return command(tenantId, `subscription.payment.${decision}`, { kind: 'subscription_payment', id: paymentId }, ctx, async (client) => {
         const found = await client.query<{ status: SubscriptionPaymentRow['status']; subscription_id: string; amount_minor: number; currency: string; submitted_by_membership_id: string|null; target_plan_id: string|null }>(
           'SELECT status, subscription_id, amount_minor, currency, submitted_by_membership_id, target_plan_id FROM subscription_payment WHERE tenant_id = $1 AND id = $2 FOR UPDATE',
@@ -34,7 +41,7 @@ export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<
           `UPDATE subscription_payment
               SET status = $3, reviewed_at = now(), reviewed_by = $4, review_note = $5
             WHERE tenant_id = $1 AND id = $2 AND status = 'pending' RETURNING reviewed_at`,
-          [tenantId, paymentId, target, ctx.operatorSubject, decision === 'reject' ? ctx.reason.slice(0, 500) : null],
+          [tenantId, paymentId, target, ctx.operatorSubject, decision === 'reject' ? ctx.reason?.slice(0, 500) ?? null : null],
         );
 
         let summary: Record<string, unknown> = { decision, payment_id: paymentId, amount_minor:String(payment.amount_minor),currency:payment.currency,payer_key:payment.submitted_by_membership_id?`membership:${payment.submitted_by_membership_id}`:null,paid_at:decision==='approve'?reviewed.rows[0]?.reviewed_at.toISOString()??null:null };

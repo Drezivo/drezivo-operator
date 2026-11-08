@@ -1,6 +1,6 @@
 import pg from 'pg';
 import { AppError } from '../../shared/http/errors.js';
-import type { CommandContext, CommandResult, SubscriptionPaymentRow, TenantDetail, TenantMember, TenantNote, TenantSummary } from '../../features/clients/administration/index.js';
+import type { CommandContext, CommandResult, PlanOption, SubscriptionPaymentRow, TenantDetail, TenantMember, TenantNote, TenantSummary } from '../../features/clients/administration/index.js';
 
 type Queryable = Pick<pg.PoolClient, 'query'>;
 type TenantRow = { id: string; name: string; slug: string; status: TenantSummary['status']; timezone: string; created_at: Date };
@@ -16,6 +16,8 @@ const PEOPLE_LIST_LIMIT = 5000;
 const NOTE_LIMIT = 50;
 const TENANT_PAYMENT_LIMIT = 20;
 const PAYMENT_QUEUE_LIMIT = 200;
+/** Payments page history for one business: newest first, enough for years of monthly payments. */
+const PAYMENT_HISTORY_LIMIT = 200;
 
 export type PaymentDbRow = {
   target_plan_code?: string | null;
@@ -158,11 +160,24 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
           WHERE tenant_id = $1 ORDER BY created_at DESC, id DESC LIMIT ${NOTE_LIMIT}`,
         [tenant.id],
       )).rows.map((row): TenantNote => ({ id: row.id, body: row.body, author_label: row.author_label, created_at: row.created_at.toISOString() })),
-      payments: (await client.query<PaymentDbRow>(
-        `SELECT ${PAYMENT_COLUMNS} ${PAYMENT_FROM} WHERE sp.tenant_id = $1 ORDER BY sp.created_at DESC, sp.id DESC LIMIT ${TENANT_PAYMENT_LIMIT}`,
-        [tenant.id],
-      )).rows.map((row) => paymentOf(row, tenant.name)),
+      plan_options: (await client.query<{ code: string; monthly_minor: number; currency: string }>(
+        "SELECT code, monthly_minor, currency FROM plan WHERE active IS TRUE AND version = 1 AND code <> 'free' ORDER BY monthly_minor, code",
+      )).rows.map((row): PlanOption => ({
+        plan_code: row.code,
+        name: ({ starter: 'Starter', standard: 'Standard', growth: 'Growth', scale: 'Scale' } as Record<string, string>)[row.code] ?? row.code,
+        monthly_price_minor: row.monthly_minor,
+        currency: row.currency,
+      })),
+      payments: await paymentsOf(client, tenant, TENANT_PAYMENT_LIMIT),
     };
+  }
+
+  /** One business's subscription payments, newest first, on a transaction scoped to that tenant. */
+  async function paymentsOf(client: Queryable, tenant: TenantRow, limit: number): Promise<SubscriptionPaymentRow[]> {
+    return (await client.query<PaymentDbRow>(
+      `SELECT ${PAYMENT_COLUMNS} ${PAYMENT_FROM} WHERE sp.tenant_id = $1 ORDER BY sp.created_at DESC, sp.id DESC LIMIT ${limit}`,
+      [tenant.id],
+    )).rows.map((row) => paymentOf(row, tenant.name));
   }
 
   /** Lifts a lifecycle restriction (subscription and tenant both restricted) but never a manual operator lock. */
@@ -248,9 +263,9 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
     }
   }
   return {
-    transaction, subscriptionOf, summaryOf, tenantRow, detailOf, liftLifecycleRestriction, command, operatorRead,
+    transaction, subscriptionOf, summaryOf, tenantRow, detailOf, paymentsOf, liftLifecycleRestriction, command, operatorRead,
     close: () => pool.end(),
-    TENANT_LIST_LIMIT, PEOPLE_LIST_LIMIT, PAYMENT_QUEUE_LIMIT,
+    TENANT_LIST_LIMIT, PEOPLE_LIST_LIMIT, PAYMENT_QUEUE_LIMIT, PAYMENT_HISTORY_LIMIT,
     paymentOf, conflict, notFound, iso,
   };
 }

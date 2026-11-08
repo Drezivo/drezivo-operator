@@ -52,4 +52,31 @@ describe("PaymentsPanel", () => {
     expect(posted).toContain(`/subscription-payments/${payment.payment_id}/reject`);
     expect(await screen.findByText("Nothing to review")).toBeInTheDocument();
   });
+
+  it("lists one business's whole history after choosing it, without loading the queue", async () => {
+    const urls: string[] = [];
+    const history = [
+      { ...payment, payment_id: '77777777-7777-4777-8777-777777777777', status: 'verified', reference: 'GC-OCT', amount_minor: '29900', reviewed_at: '2026-10-02T00:00:00Z' },
+      { ...payment, payment_id: '88888888-8888-4888-8888-888888888888', status: 'verified', reference: 'GC-SEP', amount_minor: '29900', reviewed_at: '2026-09-02T00:00:00Z' },
+      { ...payment, payment_id: '99999999-9999-4999-8999-999999999999', status: 'failed', reference: 'GC-BAD', review_note: 'No match' },
+    ];
+    mockFetch((url) => {
+      urls.push(url);
+      if (url.endsWith('/tenants?') || url.endsWith('/tenants')) return envelope({ items: [{ tenant_id: tenantId, name: 'Luna Gowns', slug: 'luna-gowns' }] });
+      if (url.includes(`/tenants/${tenantId}/subscription-payments`)) return envelope({ items: history });
+      return envelope({ items: [] });
+    });
+    render(<PaymentsPanel getToken={getToken} onOpenBusiness={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'By business' }));
+    expect(screen.getByText('Choose a business')).toBeInTheDocument();
+    await screen.findByRole('option', { name: /Luna Gowns/ });
+    urls.length = 0;
+    fireEvent.change(screen.getByRole('combobox', { name: 'Business' }), { target: { value: tenantId } });
+
+    expect(await screen.findByText('GC-OCT')).toBeInTheDocument();
+    expect(screen.getByText('GC-SEP')).toBeInTheDocument();
+    expect(screen.getByText('GC-BAD')).toBeInTheDocument();
+    expect(screen.getByText(/3 payments · 2 approved/)).toBeInTheDocument();
+    expect(urls.some((url) => url.includes('/subscription-payments?status='))).toBe(false);
+  });
 });

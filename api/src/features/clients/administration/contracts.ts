@@ -11,6 +11,11 @@ import type { BusinessUserProfile } from "../repository/clerk-directory.js";
 export const uuid = z.string().uuid();
 export const idempotencyKey = z.string().trim().min(16).max(200).regex(/^[A-Za-z0-9_.:-]+$/);
 export const reason = z.string().trim().min(3).max(500).regex(/^[^\u0000-\u001f\u007f]*$/);
+export const optionalReason = z.preprocess(
+  (value) => typeof value === 'string' && value.trim() === '' ? undefined : value,
+  reason.optional(),
+);
+export const planCodeSchema = z.enum(['starter', 'standard', 'growth', 'scale']);
 const isoDate = z.string().datetime({ offset: true });
 const businessName = z.string().trim().min(2).max(120).regex(/^[^\u0000-\u001f\u007f]*$/);
 const timezone = z.string().trim().min(3).max(64).refine((value) => {
@@ -38,6 +43,8 @@ export type TenantSummary = {
   member_counts: { active: number; suspended: number; removed: number };
   /** A subscription payment proof is waiting for review. */
   pending_payment: boolean;
+  /** Latest sign-in of any active member, from the business Clerk directory; null when unknown. */
+  last_signed_in_at?: string | null;
 };
 
 export const subscriptionPaymentStatusSchema = z.enum(['pending', 'verified', 'failed']);
@@ -88,17 +95,29 @@ export type TenantDetail = TenantSummary & {
   recent_audit: TenantAuditEntry[];
   notes: TenantNote[];
   payments: SubscriptionPaymentRow[];
+  plan_options?: PlanOption[];
 };
 
-export type CommandContext = { operatorSubject: string; idempotencyKey: string; requestId: string; reason: string; requestFingerprint?: string };
+export type PlanOption = { plan_code: string; name: string; monthly_price_minor: number; currency: string };
+export type CommandContext = {
+  operatorSubject: string;
+  idempotencyKey: string;
+  requestId: string;
+  reason: string | null;
+  requestFingerprint?: string;
+  operatorOrganizationId?: string;
+  operatorRole?: string;
+};
 export type CommandResult = { tenant: TenantDetail; changed: boolean; replayed: boolean };
 
-export const profileInputSchema = z.object({ name: businessName.optional(), timezone: timezone.optional(), reason }).strict()
+export const profileInputSchema = z.object({ name: businessName.optional(), timezone: timezone.optional(), reason: optionalReason }).strict()
   .refine((value) => value.name !== undefined || value.timezone !== undefined, 'Provide a name or a timezone to change.');
-export const reasonInputSchema = z.object({ reason }).strict();
-export const trialInputSchema = z.object({ trial_ends_at: isoDate, reason }).strict();
-export const activateInputSchema = z.object({ current_period_end: isoDate, reason }).strict();
-export const readOnlyExtensionInputSchema = z.object({ read_only_until: isoDate, reason }).strict();
+export const reasonInputSchema = z.object({ reason: optionalReason }).strict();
+export const trialInputSchema = z.object({ trial_ends_at: isoDate, reason: optionalReason }).strict();
+export const activateInputSchema = z.object({ current_period_end: isoDate, reason: optionalReason }).strict();
+export const readOnlyExtensionInputSchema = z.object({ read_only_until: isoDate, reason: optionalReason }).strict();
+export const planChangeInputSchema = z.object({ plan_code: planCodeSchema, reason: optionalReason }).strict();
+export const ownerVisibleReasonInputSchema = z.object({ reason }).strict();
 export const noteInputSchema = z.object({ body: z.string().trim().min(1).max(2000).regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]*$/) }).strict();
 export const paymentQueueQuerySchema = z.object({ status: z.enum(['pending', 'recent']).default('pending') }).strict();
 
@@ -106,6 +125,7 @@ export type TenantAdminPort = {
   listTenants(): Promise<TenantSummary[]>;
   listPeople(): Promise<PersonRow[]>;
   getTenant(tenantId: string): Promise<TenantDetail | null>;
+  changeSubscriptionPlan(tenantId: string, planCode: z.infer<typeof planCodeSchema>, context: CommandContext): Promise<CommandResult>;
   updateProfile(tenantId: string, change: { name?: string; timezone?: string }, context: CommandContext): Promise<CommandResult>;
   setTenantLocked(tenantId: string, locked: boolean, context: CommandContext): Promise<CommandResult>;
   setMemberSuspended(tenantId: string, membershipId: string, suspended: boolean, context: CommandContext): Promise<CommandResult>;
@@ -115,6 +135,8 @@ export type TenantAdminPort = {
   extendReadOnly(tenantId: string, readOnlyUntil: Date, context: CommandContext): Promise<CommandResult>;
   addNote(tenantId: string, body: string, authorLabel: string, context: CommandContext): Promise<CommandResult>;
   listPayments(filter: 'pending' | 'recent'): Promise<SubscriptionPaymentRow[]>;
+  /** Every subscription payment of one business, newest first; null when the business does not exist. */
+  listTenantPayments(tenantId: string): Promise<SubscriptionPaymentRow[] | null>;
   /** Approve: payment verified, one more paid month, owner emailed. Reject: reason shown to the owner. */
   reviewPayment(tenantId: string, paymentId: string, decision: 'approve' | 'reject', context: CommandContext): Promise<CommandResult>;
 };
@@ -127,6 +149,7 @@ export const unavailableTenantAdminPort: TenantAdminPort = {
   listTenants: async () => { throw unavailable(); },
   listPeople: async () => { throw unavailable(); },
   getTenant: async () => { throw unavailable(); },
+  changeSubscriptionPlan: async () => { throw unavailable(); },
   updateProfile: async () => { throw unavailable(); },
   setTenantLocked: async () => { throw unavailable(); },
   setMemberSuspended: async () => { throw unavailable(); },
@@ -135,6 +158,7 @@ export const unavailableTenantAdminPort: TenantAdminPort = {
   extendReadOnly: async () => { throw unavailable(); },
   addNote: async () => { throw unavailable(); },
   listPayments: async () => { throw unavailable(); },
+  listTenantPayments: async () => { throw unavailable(); },
   reviewPayment: async () => { throw unavailable(); },
 };
 

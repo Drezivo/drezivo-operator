@@ -2,6 +2,7 @@ export const clientPaths = {
   list: "/tenants",
   people: "/people",
   detail: (id: string) => `/tenants/${encodeURIComponent(id)}`,
+  plan: (id: string) => `/tenants/${encodeURIComponent(id)}/plan`,
   profile: (id: string) => `/tenants/${encodeURIComponent(id)}/profile`,
   lock: (id: string) => `/tenants/${encodeURIComponent(id)}/lock`,
   unlock: (id: string) => `/tenants/${encodeURIComponent(id)}/unlock`,

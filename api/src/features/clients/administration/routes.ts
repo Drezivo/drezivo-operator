@@ -5,7 +5,7 @@ import { AppError } from "../../../shared/http/errors.js";
 import { createHash } from "node:crypto";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "../repository/clerk-directory.js";
 import { tenantAdminPermissions } from "../../../shared/auth/operator-permission-codes.js";
-import { uuid, idempotencyKey, reason, profileInputSchema, reasonInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "./contracts.js";
+import { uuid, idempotencyKey, profileInputSchema, reasonInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, planChangeInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "./contracts.js";
 import type { TenantDetail, CommandContext, CommandResult, TenantAdminPort, ProofLinkSigner } from "./contracts.js";
 
 /** Trial and paid periods are bounded so a typo cannot grant years of free service. */
@@ -40,6 +40,7 @@ export function createOperatorTenantAdminRouter(
   router.get('/tenants/:tenantId', read, controller.getTenant);
 
   router.post('/tenants/:tenantId/profile', manage, controller.updateProfile);
+  router.post('/tenants/:tenantId/plan', manage, controller.changeSubscriptionPlan);
 
   for (const [path, locked] of [['lock', true], ['unlock', false]] as const) {
     router.post(`/tenants/:tenantId/${path}`, manage, controller.setTenantLocked(locked));

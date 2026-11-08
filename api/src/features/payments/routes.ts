@@ -17,9 +17,11 @@ export function createPaymentAdministrationRouter(
   router.use('/subscription-payments', authorize);
   router.use('/tenants', authorize);
   router.get('/subscription-payments', read, controller.listPayments);
+  router.get('/tenants/:tenantId/subscription-payments', read, controller.listTenantPayments);
   for (const decision of ['approve', 'reject'] as const) {
     router.post(`/tenants/:tenantId/subscription-payments/:paymentId/${decision}`, manage, controller.reviewPayment(decision));
   }
   router.get('/tenants/:tenantId/subscription-payments/:paymentId/proof-link', read, controller.proofLink);
+  router.get('/tenants/:tenantId/subscription-payments/:paymentId/proof', read, controller.proof);
   return router;
 }

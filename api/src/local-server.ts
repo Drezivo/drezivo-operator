@@ -8,6 +8,7 @@ import { createApp } from './app.js';
 import { createConsoleDbAdapter } from './infrastructure/db/console-ports.js';
 import { createTenantAdminDbAdapter } from './features/clients/repository/admin.js';
 import { createPlatformPaymentsDbAdapter } from './features/payment-methods/repository/postgres.js';
+import { unavailablePlatformPaymentsPort } from './features/payment-methods/index.js';
 import { rolePermissions, authorizationContractVersion, operatorRoleSchema, type AuthorizationPort } from './shared/auth/operator-authorization.js';
 import { AppError } from './shared/http/errors.js';
 import { errorHandler, requestId, noStore } from './shared/http/middleware.js';
@@ -19,6 +20,8 @@ const connectionString = `postgres://drezivo_app:${encodeURIComponent(secrets.ru
 const ports = createConsoleDbAdapter({ connectionString, synthetic: true });
 const tenant = createTenantAdminDbAdapter({ connectionString });
 const payments = createPlatformPaymentsDbAdapter({ connectionString });
+// This isolated synthetic stack has no Business API; never fall back to storing QR bytes in Postgres.
+const localPayments = { ...payments, readQr: unavailablePlatformPaymentsPort.readQr, create: unavailablePlatformPaymentsPort.create, update: unavailablePlatformPaymentsPort.update };
 const tokenSchema = z.object({ sub: z.string(), role: operatorRoleSchema, sid: z.string().uuid(), exp: z.number() }).strict();
 const profiles = [{ id: 'user_local_founder', role: 'platform_owner' as const, label: 'You (Superadmin)' }, { id: 'user_local_ryanny', role: 'platform_owner' as const, label: 'Ryanny (Superadmin)' }];
 const sign = (value: string) => createHmac('sha256', secrets.signingSecret).update(value).digest('base64url');
@@ -84,7 +87,7 @@ app.use(createApp({
   protectedRateLimit: createRateLimitMiddleware(),
   authorizationPort: authorization,
   tenantAdminPort: tenant,
-  platformPaymentsPort: payments,
+  platformPaymentsPort: localPayments,
   consolePorts: localPorts,
   authentication: authenticate,
   corsOrigins: config.OPERATOR_CORS_ORIGINS,

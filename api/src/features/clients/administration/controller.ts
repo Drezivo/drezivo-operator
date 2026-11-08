@@ -1,10 +1,10 @@
 import express, { type NextFunction, type Request, type RequestHandler, type Response, type Router } from "express";
 import type { z } from "zod";
 import { AppError } from "../../../shared/http/errors.js";
-import { createHash } from "node:crypto";
+import { commandRequestFingerprint } from "../../../shared/idempotency.js";
 import { emptyBusinessUserDirectory, type BusinessUserDirectory } from "../repository/clerk-directory.js";
 import { tenantAdminPermissions } from "../../../shared/auth/operator-permission-codes.js";
-import { uuid, idempotencyKey, reason, profileInputSchema, reasonInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "./contracts.js";
+import { uuid, idempotencyKey, profileInputSchema, reasonInputSchema, trialInputSchema, activateInputSchema, readOnlyExtensionInputSchema, planChangeInputSchema, noteInputSchema, paymentQueueQuerySchema, unavailable, unavailableTenantAdminPort } from "./contracts.js";
 import type { TenantDetail, CommandContext, CommandResult, TenantAdminPort, ProofLinkSigner } from "./contracts.js";
 
 type Options = {
@@ -25,12 +25,21 @@ function parse<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
   if (!parsed.success) throw new AppError(400, 'VALIDATION_FAILED', message);
   return parsed.data;
 }
-function context(req: Request, res: Response, reasonText: string): CommandContext {
+function context(req: Request, res: Response, reasonText?: string): CommandContext {
   const key = req.get('Idempotency-Key');
   if (!key || !idempotencyKey.safeParse(key).success) throw new AppError(400, 'VALIDATION_FAILED', 'A valid idempotency key is required.');
   const subject = res.locals.operatorPrincipal?.clerkUserId;
   if (typeof subject !== 'string' || subject.length === 0) throw new AppError(403, 'OPERATOR_ACCESS_REQUIRED', 'Operator access is required.');
-  return { operatorSubject: subject, idempotencyKey: key.trim(), requestId: requestId(res), reason: reasonText, requestFingerprint: createHash('sha256').update(JSON.stringify(req.body, Object.keys(req.body as object).sort())).digest('hex') };
+  const principal = res.locals.operatorPrincipal;
+  return {
+    operatorSubject: subject,
+    idempotencyKey: key.trim(),
+    requestId: requestId(res),
+    reason: reasonText ?? null,
+    operatorOrganizationId: principal?.operatorOrganizationId,
+    operatorRole: principal?.roles?.length === 1 ? principal.roles[0] : undefined,
+    requestFingerprint: commandRequestFingerprint(req.body, reasonText),
+  };
 }
 function send(res: Response, status: number, data: unknown): void {
   res.status(status).setHeader('Cache-Control', 'no-store').json({ success: true, data, request_id: requestId(res) });
@@ -67,7 +76,20 @@ export function createClientAdministrationController(
     } catch (error) { forward(next, error); }
   },
     listTenants: async (_req: Request, res: Response, next: NextFunction) => {
-    try { send(res, 200, { items: await service.listTenants() }); } catch (error) { forward(next, error); }
+    try {
+      // Last sign-in of a business = the latest Clerk sign-in among its active members. Profiles are
+      // cached and fetched in batches; when the directory is unavailable the column is simply empty.
+      const [tenants, people] = await Promise.all([service.listTenants(), service.listPeople()]);
+      const active = people.filter((person) => person.status === 'active');
+      const profiles = await directory.lookup(active.map((person) => person.clerk_user_id));
+      const lastSignIn = new Map<string, string>();
+      for (const person of active) {
+        const at = profiles.get(person.clerk_user_id)?.last_sign_in_at;
+        const current = lastSignIn.get(person.tenant_id);
+        if (at && (!current || at > current)) lastSignIn.set(person.tenant_id, at);
+      }
+      send(res, 200, { items: tenants.map((tenant) => ({ ...tenant, last_signed_in_at: lastSignIn.get(tenant.tenant_id) ?? null })) });
+    } catch (error) { forward(next, error); }
   },
     getTenant: async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -79,7 +101,7 @@ export function createClientAdministrationController(
     updateProfile: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tenantId = tenantIdParam(req);
-      const input = parse(profileInputSchema, req.body, 'Provide a valid name or IANA time zone and a reason.');
+      const input = parse(profileInputSchema, req.body, 'Provide a valid name or IANA time zone.');
       const { reason: text, ...change } = input;
       send(res, 200, await command(await service.updateProfile(tenantId, change, context(req, res, text))));
     } catch (error) { forward(next, error); }
@@ -87,7 +109,7 @@ export function createClientAdministrationController(
     setTenantLocked: (locked: boolean): RequestHandler => async (req: Request, res: Response, next: NextFunction) => {
       try {
         const tenantId = tenantIdParam(req);
-        const input = parse(reasonInputSchema, req.body, 'A reason of 3 to 500 characters is required.');
+        const input = parse(reasonInputSchema, req.body, 'Provide a valid reason.');
         send(res, 200, await command(await service.setTenantLocked(tenantId, locked, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
     },
@@ -96,8 +118,15 @@ export function createClientAdministrationController(
         const tenantId = tenantIdParam(req);
         const membershipId = typeof req.params.membershipId === 'string' ? req.params.membershipId : '';
         if (!uuid.safeParse(membershipId).success) throw new AppError(400, 'VALIDATION_FAILED', 'The member identifier is invalid.');
-        const input = parse(reasonInputSchema, req.body, 'A reason of 3 to 500 characters is required.');
+        const input = parse(reasonInputSchema, req.body, 'Provide a valid reason.');
         send(res, 200, await command(await service.setMemberSuspended(tenantId, membershipId, suspended, context(req, res, input.reason))));
+      } catch (error) { forward(next, error); }
+    },
+    changeSubscriptionPlan: async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const tenantId = tenantIdParam(req);
+        const input = parse(planChangeInputSchema, req.body, 'Choose a valid subscription plan.');
+        send(res, 200, await command(await service.changeSubscriptionPlan(tenantId, input.plan_code, context(req, res, input.reason))));
       } catch (error) { forward(next, error); }
     },
     addNote: async (req: Request, res: Response, next: NextFunction) => {

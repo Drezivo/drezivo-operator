@@ -1,4 +1,5 @@
 import type { TenantAdminPort } from '../administration/index.js';
+import { AppError } from '../../../shared/http/errors.js';
 import { createTenantAdminCommandAdapter } from './admin-commands.js';
 import { createSubscriptionAdminCommandAdapter } from '../../subscriptions/repository/admin-commands.js';
 import { createTenantAdminDbContext, type TenantAdminDbOptions } from '../../../infrastructure/db/tenant-admin-context.js';
@@ -14,6 +15,9 @@ export function createTenantAdminDbAdapter(options: TenantAdminDbOptions): Tenan
     ...createTenantAdminCommandAdapter(context),
     ...createSubscriptionAdminCommandAdapter(context),
     ...createTenantPaymentAdapter(context),
+    async changeSubscriptionPlan() {
+      throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Business API plan changes are not configured.');
+    },
     close: context.close,
   };
 }

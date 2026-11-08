@@ -15,6 +15,12 @@ const detail: ClientDetail = {
   pending_payment: false,
   notes: [],
   payments: [],
+  plan_options: [
+    { plan_code: "starter", name: "Starter", monthly_price_minor: 14900, currency: "PHP" },
+    { plan_code: "standard", name: "Standard", monthly_price_minor: 29900, currency: "PHP" },
+    { plan_code: "growth", name: "Growth", monthly_price_minor: 49900, currency: "PHP" },
+    { plan_code: "scale", name: "Scale", monthly_price_minor: 99900, currency: "PHP" },
+  ],
   members: [{ membership_id: memberId, clerk_user_id: "user_owner_a", role: "owner", status: "active", created_at: "2026-09-20T02:00:00Z" }],
   recent_audit: [{ occurred_at: "2026-09-21T01:00:00Z", actor_kind: "staff", action: "catalogue.item.created", entity_type: "product", outcome: "succeeded" }],
 };
@@ -133,6 +139,16 @@ describe("ClientsPanel", () => {
     expect(screen.queryByText("Luna Gowns")).not.toBeInTheDocument();
   });
 
+  it("shows when each business last signed in, or that it has not yet", async () => {
+    const signedIn = "2026-10-30T09:15:00Z";
+    mockFetch((url) => url.endsWith("/tenants")
+      ? envelope({ items: [{ ...detail, last_signed_in_at: signedIn }, { ...paid, last_signed_in_at: null }] })
+      : envelope(detail));
+    render(<Harness />);
+    expect(await screen.findByText(formatManila(signedIn, true))).toBeInTheDocument();
+    expect(screen.getByText("Not yet")).toBeInTheDocument();
+  });
+
   it("opens a business from its row and goes back to the list", async () => {
     mockFetch(listAndDetail);
     render(<Harness />);
@@ -211,18 +227,70 @@ describe("ClientsPanel", () => {
     expect(names).toEqual(["user_owner_a", "user_front"]);
   });
 
-  it("suspends a staff member with a reason", async () => {
+  it("suspends a staff member without requiring a reason", async () => {
     const paths: string[] = [];
+    const bodies: unknown[] = [];
     mockFetch(async (url, init) => {
-      if (init.method === "POST") { paths.push(url); return envelope({ tenant: { ...detail, members: [{ ...detail.members[0]!, status: "suspended" }] }, changed: true, replayed: false }); }
+      if (init.method === "POST") { paths.push(url); bodies.push(JSON.parse(String(init.body))); return envelope({ tenant: { ...detail, members: [{ ...detail.members[0]!, status: "suspended" }] }, changed: true, replayed: false }); }
       return listAndDetail(url);
     });
     render(<Harness initial={{ client: tenantId }} />);
     fireEvent.click(await screen.findByRole("button", { name: "Suspend" }));
-    fireEvent.change(screen.getByLabelText("Reason", { selector: ".row-form textarea" }), { target: { value: "Left the shop" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm suspend" }));
     await screen.findByText(/Access suspended\./);
     expect(paths[0]).toContain(`/tenants/${tenantId}/members/${memberId}/suspend`);
+    expect(bodies[0]).toEqual({});
+  });
+
+  it("changes an eligible trial plan without requiring an internal reason", async () => {
+    let postedBody: unknown;
+    let postedUrl = "";
+    mockFetch(async (url, init) => {
+      if (init.method === "POST") {
+        postedUrl = url;
+        postedBody = JSON.parse(String(init.body));
+        return envelope({ tenant: { ...detail, subscription: { ...detail.subscription!, plan_code: "standard" } }, changed: true, replayed: false });
+      }
+      return listAndDetail(url);
+    });
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "standard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    await screen.findByText(/Subscription plan saved\./);
+    expect(postedUrl).toContain(`/tenants/${tenantId}/plan`);
+    expect(postedBody).toEqual({ plan_code: "standard" });
+  });
+
+  it("offers all four paid plan choices and excludes Free from the direct change selector", async () => {
+    mockFetch(listAndDetail);
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+
+    const selector = await screen.findByLabelText("Plan") as HTMLSelectElement;
+    expect([...selector.options].map((option) => option.value)).toEqual([
+      "starter", "standard", "growth", "scale",
+    ]);
+  });
+
+  it("keeps Free plan changes disabled and directs upgrades through payment review", async () => {
+    const free: ClientDetail = {
+      ...detail,
+      subscription: {
+        status: "active",
+        plan_code: "free",
+        trial_ends_at: null,
+        grace_ends_at: null,
+        current_period_end: null,
+      },
+    };
+    mockFetch((url) => url.endsWith("/tenants") ? envelope({ items: [free] }) : envelope(free));
+    render(<Harness initial={{ client: tenantId }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+
+    expect(screen.getByLabelText("Plan")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save plan" })).toBeDisabled();
+    expect(screen.getByText(/must go through the payment workflow/)).toBeInTheDocument();
   });
 
   it("lists people across businesses with names and emails, and opens their business", async () => {
@@ -271,17 +339,20 @@ describe("ClientsPanel", () => {
     expect(screen.getByText("Approved")).toBeInTheDocument();
   });
 
-  it("fetches a proof link on demand and shows it as a link that opens in a new tab", async () => {
+  it("opens the payment proof in a lightbox", async () => {
     const withPayment = { ...detail, payments: [pendingPayment] };
-    mockFetch((url) => url.endsWith("/proof-link")
-      ? envelope({ url: "https://api.example/api/v1/operator/payment-proofs/p1.token", expires_at: "2026-10-01T02:05:00Z" })
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+    URL.createObjectURL = vi.fn(() => "blob:proof");
+    URL.revokeObjectURL = vi.fn();
+    mockFetch((url) => url.endsWith("/proof")
+      ? new Response("image bytes", { headers: { "Content-Type": "image/png" } })
       : url.endsWith("/tenants") ? envelope({ items: [withPayment] }) : envelope(withPayment));
     render(<Harness initial={{ client: tenantId }} />);
     fireEvent.click(await screen.findByRole("button", { name: "View proof" }));
-    const link = await screen.findByRole("link", { name: /Open proof/ });
-    expect(link).toHaveAttribute("href", "https://api.example/api/v1/operator/payment-proofs/p1.token");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(await screen.findByRole("img", { name: "Payment proof" })).toHaveAttribute("src", "blob:proof");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:proof");
   });
 
   it("adds an operator note and extends view-only access to the end of a Manila day", async () => {

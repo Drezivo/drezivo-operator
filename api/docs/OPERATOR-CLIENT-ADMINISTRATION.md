@@ -71,11 +71,19 @@ internal details are returned).
 | `OPERATOR_TENANT_ADMIN_DATABASE_CA_FILE` | in production | Path to the database CA certificate (Supabase: Project Settings → Database → SSL certificate). TLS is verified against it. |
 | `OPERATOR_PROOF_LINK_SECRET` | to view proofs | At least 32 random characters, identical to the business API's `OPERATOR_PROOF_LINK_SECRET`. Secret: set it in the host's environment, never in a committed file. |
 | `BUSINESS_API_PUBLIC_URL` | to view proofs | Public origin of the business API, for example `https://api.drezivo.shop`. Proof links point there. |
+| `INTERNAL_SERVICE_BASE_URL` | to manage payment-method QR images | Business API base URL with a trailing slash. Deployed environments require HTTPS. |
+| `INTERNAL_SERVICE_AUTH` and `INTERNAL_OPERATOR_ASSERTION_SECRET` | to manage payment-method QR images | Matching service credential and assertion secret on the Operator and Business APIs; keep both secret. |
 | `BUSINESS_CLERK_SECRET_KEY` | optional | Secret key of the **business** Clerk instance (where shop owners and staff sign in), not the operator instance. Used only to show staff names, emails and last sign-in. If unset or Clerk is slow (> 4 s), staff are listed by Clerk user ID and `profile` is `null`. |
 
 Without `OPERATOR_TENANT_ADMIN_DATABASE_URL` every `/tenants`, `/people`, `/subscription-payments`
 and `/platform-payment-methods` route returns 503. Without both proof-link variables, only
 `proof-link` returns 503.
+
+Payment-method creation, editing, and QR viewing call the Business API, which stores QR images in
+its private object-storage bucket. These operations return 503 when the internal service is not
+configured. The isolated synthetic Docker entrypoint has no Business API and leaves these operations
+unavailable; its local database adapter must not write new QR bytes. Method listing and activation
+remain available there.
 
 Operator session tokens are accepted only when minted for an origin in `OPERATOR_CORS_ORIGINS`
 (Clerk `authorizedParties`), and `INTERNAL_SERVICE_AUTH` must be at least 32 bytes.

@@ -1,10 +1,11 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AppError } from '../src/shared/http/errors.js';
 import { createOperatorTenantAdminRouter, type CommandContext, type ProofLinkSigner, type SubscriptionPaymentRow, type TenantAdminPort, type TenantDetail } from '../src/features/clients/administration/index.js';
 import { createSubscriptionAdministrationRouter } from '../src/features/subscriptions/administration-routes.js';
 import { createPaymentAdministrationRouter } from '../src/features/payments/routes.js';
+import { logger } from '../src/shared/logging/logger.js';
 
 const tenantId = '550e8400-e29b-41d4-a716-446655440000';
 const membershipId = '650e8400-e29b-41d4-a716-446655440000';
@@ -20,9 +21,9 @@ const result = { tenant: detail, changed: true, replayed: false };
 
 function port(overrides: Partial<TenantAdminPort> = {}): TenantAdminPort {
   return {
-    listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, updateProfile: async () => result, setTenantLocked: async () => result,
+    listTenants: async () => [detail], listPeople: async () => [], getTenant: async () => detail, changeSubscriptionPlan: async () => result, updateProfile: async () => result, setTenantLocked: async () => result,
     setMemberSuspended: async () => result, setTrialEnd: async () => result, activateSubscription: async () => result,
-    extendReadOnly: async () => result, addNote: async () => result, listPayments: async () => [], reviewPayment: async () => result, ...overrides,
+    extendReadOnly: async () => result, addNote: async () => result, listPayments: async () => [], listTenantPayments: async () => [], reviewPayment: async () => result, ...overrides,
   };
 }
 const directory = { lookup: async (ids: readonly string[]) => new Map(ids.filter((id) => id === 'user_owner_a').map((id) => [id, { email: 'owner@luna.ph', name: 'Luna Owner', last_sign_in_at: null, banned: false, locked: false }] as const)) };
@@ -55,6 +56,30 @@ describe('operator tenant administration boundary', () => {
     expect((await request(a).get(`/api/v1/tenants/${tenantId}`)).body.data.name).toBe('Luna Gowns');
     expect(seen).toContain('tenant.admin.read');
     expect(seen).toContain('tenant.admin.manage');
+  });
+
+  it("shows each business's latest sign-in among its active members", async () => {
+    const otherTenant = '00000000-0000-4000-8000-000000000222';
+    const person = (tenant: string, user: string, status: 'active' | 'suspended') => ({
+      tenant_id: tenant, tenant_name: 'Luna Gowns', tenant_status: 'active' as const, membership_id: membershipId,
+      clerk_user_id: user, role: 'frontdesk' as const, status, created_at: '2026-09-20T00:00:00.000Z',
+    });
+    const signIns: Record<string, string> = {
+      user_old: '2026-10-01T00:00:00.000Z',
+      user_new: '2026-10-20T00:00:00.000Z',
+      user_suspended: '2026-10-30T00:00:00.000Z',
+    };
+    const signInDirectory = { lookup: async (ids: readonly string[]) => new Map(ids.filter((id) => signIns[id]).map((id) => [id, { email: null, name: null, last_sign_in_at: signIns[id]!, banned: false, locked: false }] as const)) };
+    const a = express();
+    a.use((_req, res, next) => { res.locals.requestId = 'req'; next(); });
+    a.use('/api/v1', createOperatorTenantAdminRouter(port({
+      listTenants: async () => [detail, { ...detail, tenant_id: otherTenant }],
+      listPeople: async () => [person(tenantId, 'user_old', 'active'), person(tenantId, 'user_new', 'active'), person(tenantId, 'user_suspended', 'suspended')],
+    }), (_req, _res, next) => next(), { permissionMiddleware: () => (_req, _res, next) => next(), directory: signInDirectory }));
+
+    const list = await request(a).get('/api/v1/tenants');
+    expect(list.status).toBe(200);
+    expect(list.body.data.items.map((item: { last_signed_in_at: string | null }) => item.last_signed_in_at)).toEqual(['2026-10-20T00:00:00.000Z', null]);
   });
 
   it('lists people across businesses and adds names and emails from the business directory', async () => {
@@ -97,17 +122,17 @@ describe('operator tenant administration boundary', () => {
     expect(calls).toHaveLength(7);
     for (const call of calls) {
       expect(call.ctx).toMatchObject({ operatorSubject: 'user_operator', idempotencyKey: key, requestId: 'req' });
-      expect(call.ctx.reason.length).toBeGreaterThan(2);
+      expect(call.ctx.reason?.length).toBeGreaterThan(2);
     }
   });
 
-  it('rejects commands without a valid idempotency key, reason, or bounded date before calling the port', async () => {
+  it('rejects invalid keys, malformed optional reasons, and unbounded dates before calling the port', async () => {
     let called = false;
     const p = port({ setTenantLocked: async () => { called = true; return result; }, setTrialEnd: async () => { called = true; return result; }, activateSubscription: async () => { called = true; return result; } });
     const a = app(p);
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).send({ reason: 'Unpaid invoice' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', 'short').send({ reason: 'Unpaid' })).body.error.code).toBe('VALIDATION_FAILED');
-    expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({})).body.error.code).toBe('VALIDATION_FAILED');
+    expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({ reason: 'ok' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send({ reason: 'ok reason', extra: true })).body.error.code).toBe('VALIDATION_FAILED');
     const past = await request(a).post(`/api/v1/tenants/${tenantId}/trial`).set('Idempotency-Key', key).send({ trial_ends_at: '2026-09-01T00:00:00Z', reason: 'extend' });
     expect(past.body.error.code).toBe('VALIDATION_FAILED');
@@ -118,6 +143,56 @@ describe('operator tenant administration boundary', () => {
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/profile`).set('Idempotency-Key', key).send({ reason: 'nothing to change' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).post(`/api/v1/tenants/${tenantId}/profile`).set('Idempotency-Key', key).send({ timezone: 'Mars/Olympus', reason: 'bad zone' })).body.error.code).toBe('VALIDATION_FAILED');
     expect(called).toBe(false);
+  });
+
+  it('accepts omitted reasons on internal client actions and passes a null audit reason', async () => {
+    const reasons: Array<string | null> = [];
+    const record = async (...args: unknown[]) => { reasons.push((args.at(-1) as CommandContext).reason); return result; };
+    const a = app(port({ setTenantLocked: record, updateProfile: record, changeSubscriptionPlan: record }));
+    const send = (path: string, body: object) => request(a).post(`/api/v1/tenants/${tenantId}${path}`).set('Idempotency-Key', key).send(body);
+    expect((await send('/lock', {})).status).toBe(200);
+    expect((await send('/profile', { name: 'Luna Rental House' })).status).toBe(200);
+    expect((await send('/plan', { plan_code: 'standard' })).status).toBe(200);
+    expect(reasons).toEqual([null, null, null]);
+  });
+
+  it('accepts all paid plan tiers and rejects Free or unknown direct changes', async () => {
+    const selected: string[] = [];
+    const a = app(port({
+      changeSubscriptionPlan: async (_tenantId, planCode, _context) => {
+        selected.push(planCode);
+        return result;
+      },
+    }));
+    for (const [index, planCode] of (['starter', 'standard', 'growth', 'scale'] as const).entries()) {
+      const response = await request(a)
+        .post(`/api/v1/tenants/${tenantId}/plan`)
+        .set('Idempotency-Key', `paid-plan-command-${index.toString().padStart(4, '0')}`)
+        .send({ plan_code: planCode });
+      expect(response.status).toBe(200);
+    }
+    for (const [index, planCode] of (['free', 'enterprise'] as const).entries()) {
+      const response = await request(a)
+        .post(`/api/v1/tenants/${tenantId}/plan`)
+        .set('Idempotency-Key', `invalid-plan-command-${index.toString().padStart(4, '0')}`)
+        .send({ plan_code: planCode });
+      expect(response.status).toBe(400);
+    }
+    expect(selected).toEqual(['starter', 'standard', 'growth', 'scale']);
+  });
+
+  it('normalizes blank optional reasons to the same idempotent request fingerprint as an omitted reason', async () => {
+    const fingerprints: Array<string | undefined> = [];
+    const a = app(port({ setTenantLocked: async (...args: unknown[]) => {
+      fingerprints.push((args.at(-1) as CommandContext).requestFingerprint);
+      return result;
+    } }));
+    const send = (body: object) => request(a).post(`/api/v1/tenants/${tenantId}/lock`).set('Idempotency-Key', key).send(body);
+
+    expect((await send({})).status).toBe(200);
+    expect((await send({ reason: '   ' })).status).toBe(200);
+    expect(fingerprints[0]).toBeDefined();
+    expect(fingerprints[1]).toBe(fingerprints[0]);
   });
 
   it('requires a verified operator and the manage permission for commands', async () => {
@@ -151,11 +226,13 @@ describe('operator tenant administration boundary', () => {
     expect((await send('/notes', { body: 'Called the owner about GCash.' })).status).toBe(200);
     expect((await send(`/subscription-payments/${paymentId}/approve`, { reason: 'Reference matched' })).status).toBe(200);
     expect((await send(`/subscription-payments/${paymentId}/reject`, { reason: 'Amount was 200, not 300' })).status).toBe(200);
+    expect((await send(`/subscription-payments/${paymentId}/approve`, {})).status).toBe(200);
 
     expect(calls[0]).toEqual(['extend', tenantId, new Date('2026-10-15T00:00:00Z'), expect.objectContaining({ reason: 'Owner paying next week' })]);
     expect(calls[1]).toEqual(['note', tenantId, 'Called the owner about GCash.', 'user_operator', expect.objectContaining({ idempotencyKey: key })]);
     expect(calls[2]).toEqual(['review', tenantId, paymentId, 'approve', expect.objectContaining({ reason: 'Reference matched' })]);
     expect(calls[3]).toEqual(['review', tenantId, paymentId, 'reject', expect.objectContaining({ reason: 'Amount was 200, not 300' })]);
+    expect(calls[4]).toEqual(['review', tenantId, paymentId, 'approve', expect.objectContaining({ reason: null })]);
   });
 
   it('validates pilot billing input before calling the port', async () => {
@@ -168,6 +245,7 @@ describe('operator tenant administration boundary', () => {
     expect((await send('/notes', { body: 'x'.repeat(2001) })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await send('/subscription-payments/not-a-uuid/approve', { reason: 'Reference matched' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await send(`/subscription-payments/${paymentId}/reject`, {})).body.error.message).toContain('owner sees this');
+    expect((await send(`/subscription-payments/${paymentId}/reject`, { reason: 'no' })).body.error.code).toBe('VALIDATION_FAILED');
     expect((await request(a).get('/api/v1/subscription-payments?status=everything')).body.error.code).toBe('VALIDATION_FAILED');
     expect(called).toBe(false);
   });
@@ -187,6 +265,23 @@ describe('operator tenant administration boundary', () => {
     expect(filters).toEqual(['pending', 'recent']);
   });
 
+  it("lists one business's whole payment history, refusing a bad or unknown business", async () => {
+    const asked: string[] = [];
+    const row: SubscriptionPaymentRow = {
+      payment_id: paymentId, tenant_id: tenantId, tenant_name: 'Luna Gowns', status: 'verified', amount_minor: '29900', currency: 'PHP',
+      reference: 'GC-777', method_label: 'GCash', submitted_at: '2026-09-01T00:00:00.000Z', reviewed_at: '2026-09-02T00:00:00.000Z', reviewed_by: 'op_1', review_note: null, has_proof: true,
+    };
+    const a = app(port({ listTenantPayments: async (id) => { asked.push(id); return id === tenantId ? [row] : null; } }));
+    const found = await request(a).get(`/api/v1/tenants/${tenantId}/subscription-payments`);
+    expect(found.status).toBe(200);
+    expect(found.body.data.items).toEqual([row]);
+    expect(found.headers['cache-control']).toBe('no-store');
+    const missing = await request(a).get('/api/v1/tenants/00000000-0000-4000-8000-000000000999/subscription-payments');
+    expect(missing.status).toBe(404);
+    expect((await request(a).get('/api/v1/tenants/not-a-uuid/subscription-payments')).body.error.code).toBe('VALIDATION_FAILED');
+    expect(asked).toEqual([tenantId, '00000000-0000-4000-8000-000000000999']);
+  });
+
   it('signs a proof link only when proof viewing is configured', async () => {
     const off = await request(app(port())).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof-link`);
     expect(off.status).toBe(503);
@@ -196,5 +291,94 @@ describe('operator tenant administration boundary', () => {
     expect(on.status).toBe(200);
     expect(on.body.data.url).toBe('https://api.example/proof/p1.token');
     expect(signed).toEqual([`${tenantId}/${paymentId}`]);
+  });
+
+  it('streams an authorized proof without exposing its signed URL', async () => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('proof-bytes', { headers: { 'content-type': 'image/png' } }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(200);
+      expect(result.headers['content-type']).toBe('image/png');
+      expect(result.headers['cache-control']).toContain('no-store');
+      expect(result.body.toString()).toBe('proof-bytes');
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({ 'X-Request-ID': 'req' });
+      expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeInstanceOf(AbortSignal);
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('does not fetch a proof when read access is denied', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const deny = () => (_req: Request, _res: Response, next: NextFunction) => next(new AppError(403, 'FORBIDDEN', 'Forbidden'));
+    try {
+      const result = await request(app(port(), deny)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it.each(['image/jpeg', 'image/webp', 'application/pdf'])('forwards supported proof format %s', async (contentType) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('proof', { headers: { 'content-type': contentType } }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(200);
+      expect(result.headers['content-type']).toBe(contentType);
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it('does not expose an unavailable upstream proof or its URL', async () => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('sensitive upstream message', { status: 404 }));
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(404);
+      expect(JSON.stringify(result.body)).not.toContain('private-token');
+      expect(JSON.stringify(result.body)).not.toContain('sensitive upstream message');
+    } finally { fetchMock.mockRestore(); }
+  });
+
+  it.each([[true, 'proof_route_not_found'], [false, 'unverified_upstream_not_found']] as const)('classifies proof 404 responses with marker=%s', async (marked, reason) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('private response', { status: 404, headers: marked ? { 'x-drezivo-proof-route': 'v1' } : {} }));
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(404);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ reason, request_id: 'req' }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-token|private response/);
+    } finally { fetchMock.mockRestore(); log.mockRestore(); }
+  });
+
+  it.each([
+    ['upstream_http_error', new Response('sensitive data', { status: 503 })],
+    ['invalid_upstream_response', new Response('sensitive data', { status: 200, headers: { 'content-type': 'text/html' } })],
+  ])('logs safe diagnostics for %s', async (reason, upstream) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(upstream);
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(503);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: 'api.payment_proof.failed', request_id: 'req', reason, upstream_status: upstream.status }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-token|sensitive data/);
+    } finally { fetchMock.mockRestore(); log.mockRestore(); }
+  });
+
+  it.each(['network_failure', 'timeout'])('logs %s without the upstream error text', async (reason) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const controller = new AbortController();
+    if (reason === 'timeout') controller.abort();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('secret private-token'));
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(503);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ request_id: 'req', reason }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/secret|private-token/);
+      expect(timeout).toHaveBeenCalledWith(75_000);
+    } finally { timeout.mockRestore(); fetchMock.mockRestore(); log.mockRestore(); }
   });
 });
