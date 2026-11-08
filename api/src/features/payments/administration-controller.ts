@@ -105,7 +105,11 @@ export function createPaymentAdministrationController(
         const link = options.proofLink?.(tenantIdParam(req), paymentIdParam(req));
         if (!link) throw new AppError(503, 'DEPENDENCY_UNAVAILABLE', 'Viewing payment proofs is not configured.');
         const upstream = await fetch(link.url, { redirect: 'error', signal, headers: { 'X-Request-ID': requestId(res) } });
-        if (upstream.status === 404) { logFailure('upstream_not_found', 404); await upstream.body?.cancel(); throw new AppError(404, 'NOT_FOUND', 'This payment proof is unavailable.'); }
+        if (upstream.status === 404) {
+          logFailure(upstream.headers.get('x-drezivo-proof-route') === 'v1' ? 'proof_route_not_found' : 'unverified_upstream_not_found', 404);
+          await upstream.body?.cancel();
+          throw new AppError(404, 'NOT_FOUND', 'This payment proof is unavailable.');
+        }
         const type = upstream.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
         if (!upstream.ok) {
           logFailure('upstream_http_error', upstream.status);

@@ -339,6 +339,18 @@ describe('operator tenant administration boundary', () => {
     } finally { fetchMock.mockRestore(); }
   });
 
+  it.each([[true, 'proof_route_not_found'], [false, 'unverified_upstream_not_found']] as const)('classifies proof 404 responses with marker=%s', async (marked, reason) => {
+    const signer: ProofLinkSigner = () => ({ url: 'https://api.example/private-token', expires_at: '2026-10-01T00:05:00.000Z' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new globalThis.Response('private response', { status: 404, headers: marked ? { 'x-drezivo-proof-route': 'v1' } : {} }));
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    try {
+      const result = await request(app(port(), undefined, true, signer)).get(`/api/v1/tenants/${tenantId}/subscription-payments/${paymentId}/proof`);
+      expect(result.status).toBe(404);
+      expect(log).toHaveBeenCalledWith(expect.objectContaining({ reason, request_id: 'req' }), expect.any(String));
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/private-token|private response/);
+    } finally { fetchMock.mockRestore(); log.mockRestore(); }
+  });
+
   it.each([
     ['upstream_http_error', new Response('sensitive data', { status: 503 })],
     ['invalid_upstream_response', new Response('sensitive data', { status: 200, headers: { 'content-type': 'text/html' } })],
