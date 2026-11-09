@@ -53,7 +53,8 @@ export function createTenantPaymentAdapter(context: TenantAdminDbContext): Pick<
           const price = (await client.query<{id:string;code:string;monthly_minor:number;currency:string;active:boolean}>(
             'SELECT id,code,monthly_minor,currency,active FROM plan WHERE id=$1', [payment.target_plan_id ?? subscription.plan_id],
           )).rows[0];
-          if (!price || !price.active || !['starter','standard'].includes(price.code) || price.monthly_minor <= 0 || payment.amount_minor !== price.monthly_minor || payment.currency !== price.currency) throw conflict('The payment does not match its server-recorded plan price.');
+          const allowedPlans = subscription.plan_code === 'free' ? ['starter', 'standard'] : ['starter', 'standard', 'growth', 'scale'];
+          if (!price || !price.active || !allowedPlans.includes(price.code) || price.monthly_minor <= 0 || payment.amount_minor !== price.monthly_minor || payment.currency !== price.currency) throw conflict('The payment does not match its server-recorded plan price.');
           if (subscription.plan_code !== 'free' && price.id !== subscription.plan_id) throw conflict('Paid plan changes must use the business upgrade workflow.');
           if (subscription.plan_code === 'free') {
             const workspace = (await client.query<{status:string}>('SELECT status FROM tenant WHERE id=$1',[tenantId])).rows[0];

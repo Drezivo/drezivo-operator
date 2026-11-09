@@ -161,7 +161,7 @@ export function createTenantAdminDbContext(options: TenantAdminDbOptions) {
         [tenant.id],
       )).rows.map((row): TenantNote => ({ id: row.id, body: row.body, author_label: row.author_label, created_at: row.created_at.toISOString() })),
       plan_options: (await client.query<{ code: string; monthly_minor: number; currency: string }>(
-        "SELECT code, monthly_minor, currency FROM plan WHERE active IS TRUE AND version = 1 AND code <> 'free' ORDER BY monthly_minor, code",
+        "SELECT code, monthly_minor, currency FROM plan WHERE active IS TRUE AND version = 1 AND code IN ('starter', 'standard', 'growth', 'scale') ORDER BY monthly_minor, code",
       )).rows.map((row): PlanOption => ({
         plan_code: row.code,
         name: ({ starter: 'Starter', standard: 'Standard', growth: 'Growth', scale: 'Scale' } as Record<string, string>)[row.code] ?? row.code,

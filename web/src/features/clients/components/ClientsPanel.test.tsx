@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClientsPanel, type ClientsNavigation, type ClientsTab } from "@/features/clients/components/ClientsPanel";
 import { DEFAULT_CLIENT_FILTER, clientAttention, clientState, matchesFilter, type ClientDetail, type ClientFilter } from "@/features/clients/model";
 import { endOfManilaDay, formatManila } from "@/shared/lib/format";
+import { clearViewCache } from "@/shared/api/view-cache";
 
 const tenantId = "11111111-1111-4111-8111-111111111111";
 const memberId = "33333333-3333-4333-8333-333333333333";
@@ -46,7 +47,7 @@ function Harness({ initial = {} }: { initial?: { client?: string | null; tab?: C
 }
 
 beforeEach(() => { process.env.NEXT_PUBLIC_DREZIVO_API_BASE_URL = "http://localhost:5080/api/v1"; });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); clearViewCache(); vi.unstubAllGlobals(); });
 
 function mockFetch(handler: (url: string, init: RequestInit) => Response | Promise<Response>) {
   const fetchMock = vi.fn(async (url: string, init: RequestInit) => handler(url, init));
@@ -271,6 +272,62 @@ describe("ClientsPanel", () => {
     expect([...selector.options].map((option) => option.value)).toEqual([
       "starter", "standard", "growth", "scale",
     ]);
+  });
+
+  it("confirms an immediate paid plan change before submitting it", async () => {
+    const fetchMock = mockFetch((url, init) => init.method === "POST"
+      ? envelope({ tenant: { ...paid, subscription: { ...paid.subscription!, plan_code: "growth" } }, changed: true, replayed: false })
+      : envelope(paid));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    expect(screen.getByText(/Change starter to Growth immediately/)).toHaveTextContent(formatManila(paid.subscription?.current_period_end, true));
+    expect(screen.getByText(/No additional charge is due now/)).toHaveTextContent("499");
+    expect(fetchMock.mock.calls.filter(([, init]) => init.method === "POST")).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm plan change" }));
+    await screen.findByText(/Subscription plan saved/);
+    const post = fetchMock.mock.calls.find(([, init]) => init.method === "POST");
+    expect(JSON.parse(String(post?.[1].body))).toEqual({ plan_code: "growth" });
+  });
+
+  it("blocks paid changes while a payment awaits review", async () => {
+    mockFetch(() => envelope({ ...paid, pending_payment: true }));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    expect(screen.getByText(/A payment is waiting for review/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Plan")).toBeDisabled();
+  });
+
+  it("asks for confirmation again after another action is opened", async () => {
+    mockFetch(() => envelope(paid));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "growth" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    expect(screen.getByRole("button", { name: "Confirm plan change" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit business details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change subscription plan" }));
+    expect(screen.queryByRole("button", { name: "Confirm plan change" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save plan" })).toBeEnabled();
+  });
+
+  it("does not allow a plan change after the paid period expires", async () => {
+    mockFetch(() => envelope({ ...paid, subscription: { ...paid.subscription!, current_period_end: inDays(-1) } }));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    expect(screen.getByLabelText("Plan")).toBeDisabled();
+    expect(screen.getByText(/Only an active trial or current paid period/)).toBeInTheDocument();
+  });
+
+  it("refreshes business details when paid plan options are unavailable", async () => {
+    let reads = 0;
+    mockFetch(() => envelope(++reads === 1 ? { ...paid, plan_options: undefined } : paid));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    expect(screen.getByLabelText("Plan")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh business details" }));
+    await waitFor(() => expect(screen.getByLabelText("Plan")).toBeEnabled());
   });
 
   it("keeps Free plan changes disabled and directs upgrades through payment review", async () => {

@@ -19,6 +19,7 @@ organization), return `Cache-Control: no-store`, and use the standard envelope
 | POST | `/tenants/:tenantId/members/:membershipId/suspend` | `tenant.admin.manage` | `{ reason }` | Staff member → `suspended`: next request gets 403 in the business app |
 | POST | `/tenants/:tenantId/members/:membershipId/reactivate` | `tenant.admin.manage` | `{ reason }` | Staff member → `active` |
 | POST | `/tenants/:tenantId/trial` | `tenant.admin.manage` | `{ trial_ends_at, reason }` | Set the trial end (future, ≤ 90 days). Restores a trial-expired business |
+| POST | `/tenants/:tenantId/plan` | `tenant.admin.manage` | `{ plan_code, reason? }` | Change an eligible trial or currently paid plan immediately through the Business API; retain the current billing period |
 | POST | `/tenants/:tenantId/activate` | `tenant.admin.manage` | `{ current_period_end, reason }` | Mark paid after a verified manual payment (future, ≤ 400 days) |
 | POST | `/tenants/:tenantId/read-only-extension` | `tenant.admin.manage` | `{ read_only_until, reason }` | Pilot: keep a lapsed business in view-only access (storefront visible, bookings paused) until this date (future, ≤ 90 days) |
 | POST | `/tenants/:tenantId/notes` | `tenant.admin.manage` | `{ body }` | Append an operator-only note (1–2000 characters). Businesses never see notes; the audit row records only the length |
