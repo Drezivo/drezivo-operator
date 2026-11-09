@@ -53,18 +53,21 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
   const state = clientState(client);
   const busy = pending !== null;
   const locked = state === "locked";
-  const planOptions = client.plan_options ?? [];
+  const planOptions = Array.isArray(client.plan_options) ? client.plan_options : [];
   const canSetTrial = subscription !== null && subscription.plan_code !== "free" && subscription.status !== "active" && subscription.status !== "cancelled";
-  const canChangePlan = state === "trial" && subscription?.status === "trialing" && subscription.plan_code !== "free" && !client.pending_payment;
+  const canChangePlan = client.status === "active" && subscription?.plan_code !== "free" && !client.pending_payment
+    && ((state === "trial" && subscription?.status === "trialing") || (state === "paid" && subscription?.status === "active"));
   const planChangeDescription = subscription?.plan_code === "free"
     ? "Free plan upgrades must go through the payment workflow. Approve the owner’s payment under Payments."
-    : state === "trial"
-      ? client.pending_payment
-        ? "A payment is waiting for review. Resolve it before changing the trial plan."
-        : "Plan changes apply during an active trial when current usage fits the selected plan limits. No paid access is granted."
+    : client.pending_payment
+      ? "A payment is waiting for review. Resolve it before changing the plan."
+      : state === "trial"
+        ? "Plan changes apply during an active trial when current usage fits the selected plan limits. No paid access is granted."
+        : state === "paid" && subscription?.status === "active"
+          ? "Plan changes take effect immediately when current usage fits the selected plan limits. The paid-through date stays the same."
       : locked
         ? "Unlock the business before changing its plan."
-      : "Plan changes after the trial require the existing payment workflow. This action will not change a paid or restricted subscription.";
+      : "Only an active trial or current paid period can change plans. Record a payment to restore expired access.";
   const canExtendViewOnly = state === "view_only" || state === "expired";
   const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
   const now = Date.now();
@@ -131,7 +134,12 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
 
       <aside className="client-side" aria-label="Actions">
         {subscription && subscription.status !== "cancelled" && <ActionCard id="plan" open={openAction === "plan"} onToggle={setOpenAction} title="Change subscription plan"
-          description={planOptions.length ? planChangeDescription : "The active plan catalog is unavailable. Refresh the business details before changing its plan."} submitLabel="Save plan" busy={busy} pending={pending === "plan"} submitDisabled={!canChangePlan || planOptions.length === 0}
+          description={planChangeDescription} submitLabel="Save plan" busy={busy} pending={pending === "plan"} submitDisabled={!canChangePlan || planOptions.length === 0}
+          supplement={planOptions.length === 0 ? <p className="field-hint">The active paid plan catalog is unavailable or empty. <button type="button" className="text-button" disabled={detail.refreshing} onClick={() => void load()}>Refresh business details</button></p> : undefined}
+          confirmation={state === "paid" && subscription.status === "active" ? (values) => {
+            const selected = planOptions.find((plan) => plan.plan_code === (values.plan_code ?? subscription.plan_code));
+            return <p className="field-hint">Change {subscription.plan_code} to {selected?.name ?? subscription.plan_code} immediately. The paid-through date stays {formatManila(subscription.current_period_end, true)}. No additional charge is due now. The next renewal price is {selected ? formatPeso(String(selected.monthly_price_minor), selected.currency) : "unavailable"} per month.</p>;
+          } : undefined}
           fields={(values, set) => <label>Plan<select required value={values.plan_code ?? subscription.plan_code} disabled={!canChangePlan || planOptions.length === 0} onChange={(event) => set("plan_code", event.target.value)}>
             {!planOptions.some((plan) => plan.plan_code === subscription.plan_code) && <option value={subscription.plan_code}>{subscription.plan_code}</option>}
             {planOptions.map((plan) => <option key={plan.plan_code} value={plan.plan_code}>{plan.name} · {formatPeso(String(plan.monthly_price_minor), plan.currency)}/month</option>)}

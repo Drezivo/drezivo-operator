@@ -107,6 +107,7 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
     expect(list.every((t) => t.subscription?.status === 'trialing')).toBe(true);
     const detail = await adapter.getTenant(tenantA);
     expect(detail?.members.map((m) => m.clerk_user_id)).toEqual(['user_owner_a']);
+    expect(detail?.plan_options?.map((plan) => plan.plan_code)).toEqual(['starter', 'standard', 'growth', 'scale']);
     expect(await adapter.getTenant('99999999-9999-4999-8999-999999999999')).toBeNull();
   });
 
@@ -389,6 +390,46 @@ describe.skipIf(!migrationsDir)('tenant admin adapter against the business schem
     expect(await Promise.all([consoleStore.retry.retryNotification(input),consoleStore.retry.retryNotification(input)])).toEqual([first,first]);
     expect(await count("SELECT count(*) n FROM audit_event WHERE entity_id=$1 AND action='operator.notification.retry'",[ids[0]])).toBe(1);
     for (const id of ids.slice(1)) await expect(consoleStore.retry.retryNotification({...input,deliveryId:id,idempotencyKey:randomUUID()})).rejects.toMatchObject({status:409});
+  });
+
+  describe('paid Growth and Scale renewal', () => {
+    async function pendingRenewal(planCode: string, priceOffset = 0) {
+      const tenantId = randomUUID();
+      await admin.query('INSERT INTO tenant(id,clerk_org_id,name,slug) VALUES($1,$2,$3,$3)', [tenantId, `org_${tenantId}`, `paid-${tenantId}`]);
+      await admin.query(
+        `INSERT INTO subscription(tenant_id,plan_id,status,current_period_start,current_period_end)
+         SELECT $1,id,'active',now() - interval '10 days',now() + interval '20 days' FROM plan WHERE code=$2 AND version=1 AND active`,
+        [tenantId, planCode],
+      );
+      const period = (await admin.query<{ current_period_start: Date; current_period_end: Date }>('SELECT current_period_start,current_period_end FROM subscription WHERE tenant_id=$1', [tenantId])).rows[0]!;
+      const payment = (await admin.query<{ id: string }>(
+        `INSERT INTO subscription_payment(tenant_id,subscription_id,target_plan_id,amount_minor,currency,status,collection_method,business_key)
+         SELECT s.tenant_id,s.id,p.id,p.monthly_minor+$2,p.currency,'pending','manual_qr',$3
+         FROM subscription s JOIN plan p ON p.id=s.plan_id WHERE s.tenant_id=$1 RETURNING id`,
+        [tenantId, priceOffset, randomUUID()],
+      )).rows[0]!;
+      return { tenantId, paymentId: payment.id, period };
+    }
+
+    it.each(['growth', 'scale'])('approves a %s renewal once at the catalog price', async (planCode) => {
+      const { tenantId, paymentId, period } = await pendingRenewal(planCode);
+      const context = ctx('Verify renewal');
+      const results = await Promise.all([
+        adapter.reviewPayment(tenantId, paymentId, 'approve', context),
+        adapter.reviewPayment(tenantId, paymentId, 'approve', context),
+      ]);
+      expect(results.filter((result) => result.changed)).toHaveLength(1);
+      const after = (await admin.query<{ current_period_start: Date; current_period_end: Date }>('SELECT current_period_start,current_period_end FROM subscription WHERE tenant_id=$1', [tenantId])).rows[0]!;
+      expect(after.current_period_start.toISOString()).toBe(period.current_period_start.toISOString());
+      expect(after.current_period_end.getTime()).toBeGreaterThan(period.current_period_end.getTime());
+      expect(await count("SELECT count(*) n FROM audit_event WHERE tenant_id=$1 AND action='operator.subscription.payment.approve'", [tenantId])).toBe(1);
+    });
+
+    it('rejects a Growth renewal with a mismatched amount', async () => {
+      const { tenantId, paymentId } = await pendingRenewal('growth', 1);
+      await expect(adapter.reviewPayment(tenantId, paymentId, 'approve', ctx())).rejects.toMatchObject({ status: 409 });
+      expect(await count("SELECT count(*) n FROM subscription_payment WHERE id=$1 AND status='pending'", [paymentId])).toBe(1);
+    });
   });
 
   describe('latest Free-plan contracts', () => {

@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowLeft, CaretRight, CircleNotch } from "@phosphor-icons/react";
 import { personLabel, type ClientDetail, type ClientMember } from "@/features/clients/model";
 import { formatManila } from "@/shared/lib/format";
@@ -54,35 +54,42 @@ export function MemberRow({ member, busy, pending, onAction }: { member: ClientM
 
 type FieldValues = Record<string, string | undefined>;
 
-export function ActionCard({ id, open, onToggle, title, description, submitLabel, tone = "default", busy, pending, fields, onSubmit, submitDisabled }: {
+export function ActionCard({ id, open, onToggle, title, description, submitLabel, tone = "default", busy, pending, fields, onSubmit, submitDisabled, supplement, confirmation }: {
   id: string; open: boolean; onToggle: (id: string | null) => void;
   title: string; description: string; submitLabel: string; tone?: "default" | "danger"; busy: boolean; pending: boolean;
   fields?: (values: FieldValues, set: (name: string, value: string) => void) => ReactNode;
   onSubmit: (reason: string | undefined, values: FieldValues) => Promise<boolean>;
   submitDisabled?: boolean;
+  supplement?: ReactNode;
+  confirmation?: (values: FieldValues) => ReactNode;
 }) {
   const [values, setValues] = useState<FieldValues>({});
   const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => { if (!open) setConfirming(false); }, [open]);
   const formId = `action-${id}`;
-  const close = () => { setReason(""); setValues({}); onToggle(null); };
+  const close = () => { setReason(""); setValues({}); setConfirming(false); onToggle(null); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const text = reason.trim();
-    if (busy || (text.length > 0 && text.length < 3)) return;
-    if (await onSubmit(text || undefined, values)) { setReason(""); setValues({}); }
+    if (busy || submitDisabled || (text.length > 0 && text.length < 3)) return;
+    if (confirmation && !confirming) { setConfirming(true); return; }
+    if (await onSubmit(text || undefined, values)) { setReason(""); setValues({}); setConfirming(false); }
   };
   return <section className={`panel action-card ${tone === "danger" ? "action-danger" : ""} ${open ? "is-open" : ""}`}>
     <h3><button type="button" className="action-toggle" aria-expanded={open} aria-controls={formId} disabled={busy && !open} onClick={() => (open ? close() : onToggle(id))}>
       <span>{title}</span><CaretRight size={15} aria-hidden="true" className="action-caret" />
     </button></h3>
     <p className="muted panel-intro">{description}</p>
+    {supplement}
     {open && <form id={formId} className="action-form" onSubmit={submit}>
-      {fields?.(values, (name, value) => setValues((current) => ({ ...current, [name]: value })))}
-      <label>Reason (optional)<span className="field-hint">Saved in the activity log when provided.</span><textarea maxLength={500} rows={2} value={reason} onChange={(event) => setReason(event.target.value)} disabled={busy} autoFocus /></label>
+      {fields?.(values, (name, value) => { setConfirming(false); setValues((current) => ({ ...current, [name]: value })); })}
+      <label>Reason (optional)<span className="field-hint">Saved in the activity log when provided.</span><textarea maxLength={500} rows={2} value={reason} onChange={(event) => { setConfirming(false); setReason(event.target.value); }} disabled={busy} autoFocus /></label>
+      {confirming && confirmation && <div role="status">{confirmation(values)}</div>}
       <div className="action-buttons">
         <button type="button" className="text-button" disabled={busy} onClick={close}>Cancel</button>
         <button className={`button ${tone === "danger" ? "button-danger" : "button-primary"}`} type="submit" disabled={busy || submitDisabled === true || (reason.trim().length > 0 && reason.trim().length < 3)}>
-          {pending ? <><CircleNotch className="spin" size={15} /> Saving…</> : submitLabel}
+          {pending ? <><CircleNotch className="spin" size={15} /> Saving…</> : confirming ? "Confirm plan change" : submitLabel}
         </button>
       </div>
     </form>}
