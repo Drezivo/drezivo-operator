@@ -55,8 +55,8 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
   const locked = state === "locked";
   const planOptions = Array.isArray(client.plan_options) ? client.plan_options : [];
   const canSetTrial = subscription !== null && subscription.plan_code !== "free" && subscription.status !== "active" && subscription.status !== "cancelled";
-  const canChangePlan = client.status === "active" && subscription?.plan_code !== "free" && !client.pending_payment
-    && ((state === "trial" && subscription?.status === "trialing") || (state === "paid" && subscription?.status === "active"));
+  const canChangePlan = client.status === "active" && subscription !== null && subscription.plan_code !== "free"
+    && ["trialing", "active", "past_due", "restricted"].includes(subscription.status) && !client.pending_payment;
   const planChangeDescription = subscription?.plan_code === "free"
     ? "Free plan upgrades must go through the payment workflow. Approve the owner’s payment under Payments."
     : client.pending_payment
@@ -65,9 +65,13 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
         ? "Plan changes apply during an active trial when current usage fits the selected plan limits. No paid access is granted."
         : state === "paid" && subscription?.status === "active"
           ? "Plan changes take effect immediately when current usage fits the selected plan limits. The paid-through date stays the same."
-      : locked
+      : client.status === "restricted"
         ? "Unlock the business before changing its plan."
-      : "Only an active trial or current paid period can change plans. Record a payment to restore expired access.";
+      : client.status !== "active"
+        ? "The business must be active before its plan can change."
+      : subscription?.status === "cancelled"
+        ? "Cancelled subscriptions cannot change plans."
+        : "Changing the plan does not restore access or change billing dates. Record a payment separately to restore access.";
   const canExtendViewOnly = state === "view_only" || state === "expired";
   const extensionDefault = manilaDateInput(new Date(Math.max(Date.now(), subscription?.grace_ends_at ? new Date(subscription.grace_ends_at).getTime() : 0)), 7);
   const now = Date.now();
@@ -149,9 +153,9 @@ export function ClientDetailView({ tenantId, token, onBack }: { tenantId: string
             return run("plan", clientPaths.plan(tenantId), { plan_code: planCode, reason }, "Subscription plan saved.");
           }} />}
 
-        {subscription && subscription.plan_code !== "free" && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={subscription.status === "active" ? "Extend paid period" : "Record a payment"}
+        {subscription && subscription.plan_code !== "free" && subscription.status !== "cancelled" && <ActionCard id="activate" open={openAction === "activate"} onToggle={setOpenAction} title={state === "paid" ? "Extend paid period" : "Record a payment"}
           description="Only for a payment the owner did not send through Subscribe (for example cash). Proofs sent in the app are approved under Payments. Pick the last day it covers."
-          submitLabel={subscription.status === "active" ? "Save paid period" : "Mark as paid"} busy={busy} pending={pending === "activate"}
+          submitLabel={state === "paid" ? "Save paid period" : "Mark as paid"} busy={busy} pending={pending === "activate"}
           fields={(values, set) => <label>Paid until<input type="date" required value={values.date ?? paidDefault} onChange={(event) => set("date", event.target.value)} /></label>}
           onSubmit={(reason, values) => {
             const end = endOfManilaDay(values.date ?? paidDefault);
