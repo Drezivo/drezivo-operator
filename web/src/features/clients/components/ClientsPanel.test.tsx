@@ -312,12 +312,50 @@ describe("ClientsPanel", () => {
     expect(screen.getByRole("button", { name: "Save plan" })).toBeEnabled();
   });
 
-  it("does not allow a plan change after the paid period expires", async () => {
-    mockFetch(() => envelope({ ...paid, subscription: { ...paid.subscription!, current_period_end: inDays(-1) } }));
+  it("changes an overdue plan without recording payment", async () => {
+    const overdue = { ...paid, subscription: { ...paid.subscription!, current_period_end: inDays(-40) } };
+    const fetchMock = mockFetch((_url, init) => init.method === "POST"
+      ? envelope({ tenant: { ...overdue, subscription: { ...overdue.subscription, plan_code: "standard" } }, changed: true, replayed: false })
+      : envelope(overdue));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    expect(screen.getByLabelText("Plan")).toBeEnabled();
+    expect(screen.getByText(/does not restore access or change billing dates/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record a payment" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "standard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    await screen.findByText(/Subscription plan saved/);
+    const posts = fetchMock.mock.calls.filter(([, init]) => init.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.[0]).toContain("/tenants/" + paid.tenant_id + "/plan");
+    expect(JSON.parse(String(posts[0]?.[1].body))).toEqual({ plan_code: "standard" });
+  });
+
+  it.each(["past_due", "restricted"] as const)("allows plan selection for an active business with a %s subscription", async (status) => {
+    mockFetch(() => envelope({ ...paid, subscription: { ...paid.subscription!, status, current_period_end: inDays(-40) } }));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    expect(screen.getByLabelText("Plan")).toBeEnabled();
+  });
+
+  it("keeps plan changes disabled for a manually locked business", async () => {
+    mockFetch(() => envelope({ ...paid, status: "restricted" }));
     render(<Harness initial={{ client: paid.tenant_id }} />);
     fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
     expect(screen.getByLabelText("Plan")).toBeDisabled();
-    expect(screen.getByText(/Only an active trial or current paid period/)).toBeInTheDocument();
+    expect(screen.getByText(/Unlock the business before changing its plan/)).toBeInTheDocument();
+  });
+
+  it("shows the capacity reason returned by the Business API", async () => {
+    const overdue = { ...paid, subscription: { ...paid.subscription!, current_period_end: inDays(-40) } };
+    mockFetch((_url, init) => init.method === "POST"
+      ? new Response(JSON.stringify({ success: false, request_id: "req_test", error: { code: "CAPACITY_CONFLICT", message: "active garments: 301 used, 300 allowed; active Front Desk staff: 4 used, 3 allowed" } }), { status: 409 })
+      : envelope(overdue));
+    render(<Harness initial={{ client: paid.tenant_id }} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Change subscription plan" }));
+    fireEvent.change(screen.getByLabelText("Plan"), { target: { value: "standard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save plan" }));
+    expect(await screen.findByText(/active garments: 301 used/)).toHaveTextContent("active Front Desk staff: 4 used");
   });
 
   it("refreshes business details when paid plan options are unavailable", async () => {
