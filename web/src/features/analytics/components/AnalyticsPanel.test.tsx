@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseAnalyticsResponse } from "@/features/analytics/model";
 import { AnalyticsPanel } from "@/features/analytics/components/AnalyticsPanel";
@@ -60,19 +60,14 @@ describe("AnalyticsPanel", () => {
     render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
     expect(screen.getByText("Provisioned memberships").parentElement).toHaveTextContent("6");
     expect(screen.getByText("Membership records, not unique users")).toBeInTheDocument();
-    const listPriceMetric = screen.getByText("Active-plan list-price run-rate (pricing proxy)").parentElement!;
-    expect(listPriceMetric).toHaveTextContent("PHP ₱120.00");
-    expect(listPriceMetric).toHaveTextContent("USD $10.00");
-    expect(screen.getByText(/Verified cash collected: unavailable/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Active-plan monthly list price is a pricing proxy, not collected income\./)).toHaveLength(1);
+    expect(screen.getByText("Paid businesses").parentElement).toHaveTextContent("Unavailable");
+    expect(screen.queryByText("Cash collection")).not.toBeInTheDocument();
+    expect(screen.queryByText("Active-plan list-price run-rate (pricing proxy)")).not.toBeInTheDocument();
     const synthetic = screen.getByText("Synthetic QA sample · separate from live metrics").closest("details")!;
     expect(within(synthetic).getByText("Synthetic-only data. These charts are kept separate from live history and forecasts.")).toBeInTheDocument();
     expect(within(synthetic).getByRole("heading", { name: "Synthetic new businesses by month" })).toBeInTheDocument();
     expect(within(synthetic).getByRole("heading", { name: "Synthetic new businesses by calendar year" })).toBeInTheDocument();
-    expect(within(synthetic).getByRole("heading", { name: "Synthetic new memberships by week" })).toBeInTheDocument();
     expect(within(synthetic).queryByText("Business additions forecast")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "New businesses by week" })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "New businesses by week weekly values" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "New businesses by calendar year" })).toBeInTheDocument();
     const liveYearly = screen.getByRole("heading", { name: "New businesses by calendar year" }).closest("section")!;
     expect(within(liveYearly).getByLabelText("2025, Sep–Dec · partial: 8 businesses")).toBeInTheDocument();
@@ -80,36 +75,27 @@ describe("AnalyticsPanel", () => {
     expect(screen.getAllByText("12 months", { selector: "strong" })).toHaveLength(2);
   });
 
-  it("renders zero values as zero-height monthly and weekly bars", () => {
+  it("renders zero values as zero-height monthly bars", () => {
     render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
     const monthlyList = screen.getByRole("list", { name: "New businesses by month monthly values" });
-    const weeklyList = screen.getByRole("list", { name: "New businesses by week weekly values" });
     const membershipList = screen.getByRole("list", { name: "New memberships by month monthly values" });
     const monthlyBar = within(monthlyList).getByLabelText("2025-09: 2 businesses").querySelector(".bar-fill");
-    const weeklyZero = within(weeklyList).getByLabelText(`${weeklyPoints[0]!.week}: 0 businesses`).querySelector(".bar-fill");
     const membershipZero = within(membershipList).getByLabelText("2025-09: 0 memberships").querySelector(".bar-fill");
     expect(monthlyBar).toHaveStyle({ height: "100%" });
-    expect(weeklyZero).toHaveStyle({ height: "0%" });
     expect(membershipZero).toHaveStyle({ height: "0%" });
   });
 
-  it("shows the exact Manila monthly and weekly boundaries with exclusive end wording", () => {
-    render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
-    expect(screen.getByText(/Monthly range: \[2025-08-31T16:00:00.000Z .*2026-08-31T16:00:00.000Z .*\) Asia\/Manila; the “to” end is exclusive\./)).toBeInTheDocument();
-    expect(screen.getByText(/Weekly range: \[2025-09-21T16:00:00.000Z .*2026-09-20T16:00:00.000Z .*\) Asia\/Manila; the “to” end is exclusive\./)).toBeInTheDocument();
-  });
-
-  it("identifies snapshot time as an API read time and separates it from unmeasured source lag", () => {
-    render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
-    expect(screen.getByText(/Snapshot as of 2026-09-25T00:00:00.000Z .*returned by the Operator API\./)).toBeInTheDocument();
-    expect(screen.getByText("Source ingestion lag is not currently measured. Snapshot time describes when the API produced this response, not source-data freshness.")).toBeInTheDocument();
-  });
-
-  it("labels subscription events as a selected subset and shows only supported event types", () => {
-    render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
-    expect(screen.getByText("Subscription event counts include selected types only: trial_started, past_due, restricted, plan_changed.")).toBeInTheDocument();
-    expect(screen.getByLabelText("2025-09: 10 selected subscription events")).toBeInTheDocument();
-    expect(screen.getByLabelText(`${weeklyPoints[0]!.week}: 10 selected subscription events`)).toBeInTheDocument();
+  it("offers only the requested history choices and hides removed content", () => {
+    const onMonthsChange = vi.fn();
+    render(<AnalyticsPanel data={sample} months={12} onMonthsChange={onMonthsChange} />);
+    const select = screen.getByLabelText("History");
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual(["6 months", "12 months", "24 months"]);
+    for (const months of [6, 12, 24]) fireEvent.change(select, { target: { value: String(months) } });
+    expect(onMonthsChange.mock.calls.map(([value]) => value)).toEqual([6, 12, 24]);
+    expect(screen.queryByText(/Source ingestion lag/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Monthly range:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Weekly range:/)).not.toBeInTheDocument();
+    for (const title of ["New businesses by week", "New memberships by week", "Selected subscription events by month", "Selected subscription events by week"]) expect(screen.queryByRole("heading", { name: title })).not.toBeInTheDocument();
   });
 
   it("explains forecast comparison and keeps withheld reasons visible", () => {
@@ -126,16 +112,6 @@ describe("AnalyticsPanel", () => {
     expect(within(membershipForecast).getAllByText("Withheld: insufficient history")).toHaveLength(4);
     expect(screen.getByText("Withheld: incomplete history. No forecast values are available because the API has incomplete history.")).toBeInTheDocument();
     expect(screen.getByText("Withheld: incomplete history. This active-plan list-price proxy is not collected income; forecast values are unavailable because the API has incomplete history.")).toBeInTheDocument();
-  });
-
-  it("keeps verified cash unavailable while labeling monthly list-price run-rate by currency", () => {
-    render(<AnalyticsPanel data={sample} months={12} onMonthsChange={vi.fn()} />);
-    expect(screen.getByText(/Verified cash collected: unavailable\./)).toBeInTheDocument();
-    expect(screen.getByText("PHP ₱120.00, USD $10.00. Active-plan monthly list price is a pricing proxy, not collected income.")).toBeInTheDocument();
-    const live = screen.getByText("Provisioned memberships").parentElement!;
-    expect(live).toHaveTextContent("6");
-    expect(screen.getByText("Synthetic provisioned memberships").parentElement).toHaveTextContent("999");
-    expect(screen.getByText("Synthetic QA sample · separate from live metrics").closest("details")).toBeInTheDocument();
   });
 
   it("renders returned 12-month forecast points as an accessible monthly chart and table", () => {

@@ -35,7 +35,8 @@ export function createAnalyticsReadAdapter(options: AnalyticsReadAdapterOptions)
     getAnalytics: async ({ principal, months, requestId }): Promise<OperatorAnalyticsResponse> => {
       const path = '/internal/operator/v1/analytics';
       // Only normalized contract values are serialized and bound into the signed assertion.
-      const query = new URLSearchParams({ months: String(months) }).toString();
+      const upstreamMonths = months === 6 ? 12 : months;
+      const query = new URLSearchParams({ months: String(upstreamMonths) }).toString();
       const assertion = createOperatorReadAssertion({
         secret: options.operatorAssertionSecret,
         principal,
@@ -62,10 +63,20 @@ export function createAnalyticsReadAdapter(options: AnalyticsReadAdapterOptions)
         throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The analytics read service returned an invalid response.');
       }
       const data = operatorAnalyticsResponse.safeParse(envelope.data.data);
-      if (!data.success || data.data.period.months !== months) {
+      if (!data.success || data.data.period.months !== upstreamMonths) {
         throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The analytics read service returned an invalid response.');
       }
-      return data.data;
+      if (months !== 6) return data.data;
+      const end = new Date(Date.parse(data.data.period.to) + 8 * 3600000);
+      const from = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 6, 1) - 8 * 3600000).toISOString();
+      const firstMonth = data.data.series.new_businesses.at(-6)?.month;
+      if (!firstMonth) throw dependencyError('DEPENDENCY_INVALID_RESPONSE', 'The analytics read service returned an invalid response.');
+      const trim = (series: OperatorAnalyticsResponse['series']) => ({
+        new_businesses: series.new_businesses.slice(-6), memberships: series.memberships.slice(-6),
+        subscription_events: series.subscription_events.filter((point) => point.month >= firstMonth),
+      });
+      return operatorAnalyticsResponse.parse({ ...data.data, period: { ...data.data.period, from, months: 6 },
+        series: trim(data.data.series), synthetic: { ...data.data.synthetic, series: trim(data.data.synthetic.series) } });
     },
   };
 }

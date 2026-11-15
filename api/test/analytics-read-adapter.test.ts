@@ -78,6 +78,19 @@ describe('analytics read adapter', () => {
     expect(claims).not.toHaveProperty('as_of');
   });
 
+  it('derives a six-month window from the validated twelve-month upstream response', async () => {
+    let url = '';
+    const adapter = createAnalyticsReadAdapter(options(async (input) => {
+      url = String(input);
+      return response({ success: true, data: analytics, request_id: requestId });
+    }));
+    const result = await adapter.getAnalytics({ principal, months: 6, requestId });
+    expect(url).toContain('months=12');
+    expect(result.period).toEqual({ from: '2026-02-28T16:00:00.000Z', to: analytics.period.to, months: 6 });
+    expect(result.series.new_businesses).toEqual(series.new_businesses.slice(-6));
+    expect(result.synthetic.series.new_businesses).toEqual(series.new_businesses.slice(-6));
+  });
+
   it('fails before network access for absent assertion configuration or a disallowed role', async () => {
     let calls = 0;
     const fetchImpl = async () => { calls += 1; return response({ success: true, data: analytics, request_id: requestId }); };
