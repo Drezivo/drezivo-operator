@@ -1,4 +1,4 @@
-import { formatMinorAmount, type AnalyticsForecast, type AnalyticsMonthPoint, type AnalyticsResponse, type AnalyticsSeries, type AnalyticsWeeklySeries, type AnalyticsWeekPoint } from "@/features/analytics/model";
+import { type AnalyticsForecast, type AnalyticsMonthPoint, type AnalyticsResponse } from "@/features/analytics/model";
 import { EmptyPanel } from "@/shared/ui/StatePanels";
 
 const manilaDateTime = new Intl.DateTimeFormat("en-PH", {
@@ -7,7 +7,6 @@ const manilaDateTime = new Intl.DateTimeFormat("en-PH", {
   timeZone: "Asia/Manila",
 });
 const monthName = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" });
-const eventTypes = ["trial_started", "past_due", "restricted", "plan_changed"] as const;
 const horizons = [1, 3, 6, 12] as const;
 const forecastLabels: Record<(typeof horizons)[number], string> = { 1: "1 month", 3: "3 months", 6: "6 months", 12: "12 months" };
 const withheldLabels: Record<NonNullable<AnalyticsForecast["withheld_reason"]>, string> = {
@@ -20,10 +19,6 @@ function formatCount(value: number): string { return new Intl.NumberFormat("en-P
 function formatBoundary(value: string): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? `${date.toISOString()} (${manilaDateTime.format(date)})` : "Time unavailable";
-}
-
-function metricCurrencyValues(data: AnalyticsResponse): string[] {
-  return data.active_plan_monthly_list_price_run_rate.map(({ currency, amount_minor }) => `${currency} ${formatMinorAmount(amount_minor, currency)}`);
 }
 
 function MetricCard({ label, value, detail }: { label: string; value: string | string[]; detail: string }) {
@@ -57,14 +52,6 @@ function monthlyPoints(points: AnalyticsMonthPoint[], unit: string) {
     label: point.month.slice(2),
     count: point.count,
     accessibleLabel: `${point.month}: ${formatCount(point.count)} ${unit}`,
-  }));
-}
-
-function weeklyPoints(points: AnalyticsWeekPoint[], unit: string) {
-  return points.map((point) => ({
-    label: point.week,
-    count: point.count,
-    accessibleLabel: `${point.week}: ${formatCount(point.count)} ${unit}`,
   }));
 }
 
@@ -150,65 +137,34 @@ function ForecastCard({ title, label, forecasts }: { title: string; label: strin
   </section>;
 }
 
-function eventMonthlyPoints(series: AnalyticsSeries) {
-  return series.new_businesses.map(({ month }) => {
-    const count = series.subscription_events.filter((event) => event.month === month && eventTypes.includes(event.event_type)).reduce((sum, event) => sum + event.count, 0);
-    return { label: month.slice(2), count, accessibleLabel: `${month}: ${formatCount(count)} selected subscription events` };
-  });
-}
-
-function eventWeeklyPoints(series: AnalyticsWeeklySeries) {
-  return series.new_businesses.map(({ week }) => {
-    const count = series.subscription_events.filter((event) => event.week === week && eventTypes.includes(event.event_type)).reduce((sum, event) => sum + event.count, 0);
-    return { label: week, count, accessibleLabel: `${week}: ${formatCount(count)} selected subscription events` };
-  });
-}
-
-export function AnalyticsPanel({ data, months, onMonthsChange }: { data: AnalyticsResponse; months: number; onMonthsChange: (months: 12 | 24 | 36 | 48) => void }) {
-  const monthlyRunRate = metricCurrencyValues(data);
-  const runRateText = monthlyRunRate.length ? monthlyRunRate.join(", ") : "No active-plan prices returned";
+export function AnalyticsPanel({ data, months, onMonthsChange, paidMetric }: { data: AnalyticsResponse; months: number; onMonthsChange: (months: 6 | 12 | 24) => void; paidMetric?: React.ReactNode }) {
   const changeMonths = (value: string) => {
     switch (value) {
+      case "6": onMonthsChange(6); break;
       case "12": onMonthsChange(12); break;
       case "24": onMonthsChange(24); break;
-      case "36": onMonthsChange(36); break;
-      case "48": onMonthsChange(48); break;
     }
   };
   return <div className="analytics-view">
     <div className="analytics-toolbar">
       <label htmlFor="analytics-months">History</label>
       <select id="analytics-months" value={months} onChange={(event) => changeMonths(event.target.value)}>
-        {[12, 24, 36, 48].map((option) => <option key={option} value={option}>{option} months</option>)}
+        {[6, 12, 24].map((option) => <option key={option} value={option}>{option} months</option>)}
       </select>
       <span>Snapshot as of {formatBoundary(data.as_of)} (Asia/Manila), returned by the Operator API.</span>
     </div>
-
-    <p className="analytics-note">Source ingestion lag is not currently measured. Snapshot time describes when the API produced this response, not source-data freshness.</p>
-    <p className="analytics-note">Monthly range: [{formatBoundary(data.period.from)}, {formatBoundary(data.period.to)}) Asia/Manila; the “to” end is exclusive.</p>
-    <p className="analytics-note">Weekly range: [{formatBoundary(data.weekly_period.from)}, {formatBoundary(data.weekly_period.to)}) Asia/Manila; the “to” end is exclusive.</p>
 
     <div className="metric-grid analytics-metrics">
       <MetricCard label="Businesses" value={formatCount(data.businesses.total)} detail="Records in this API snapshot" />
       <MetricCard label="Active subscriptions" value={formatCount(data.subscriptions.active)} detail="Subscription status returned by the API" />
       <MetricCard label="Provisioned memberships" value={formatCount(data.members.provisioned)} detail="Membership records, not unique users" />
-      <MetricCard label="Active-plan list-price run-rate (pricing proxy)" value={monthlyRunRate} detail="Monthly list-price proxy by currency; not collected income" />
+      {paidMetric ?? <MetricCard label="Paid businesses" value="Unavailable" detail="Businesses with a current paid period" />}
     </div>
-
-    <section className="analytics-card content-card analytics-cash-disclosure" aria-label="Cash collection availability">
-      <h2>Cash collection</h2><p>Verified cash collected: unavailable. This API has no verified payment timestamp or collection workflow.</p>
-      <p className="analytics-note">{runRateText}. Active-plan monthly list price is a pricing proxy, not collected income.</p>
-    </section>
 
     <div className="analytics-charts">
       <Chart title="New businesses by month" points={monthlyPoints(data.series.new_businesses, "businesses")} kind="monthly" unit="new business records" />
       <YearlyChart title="New businesses by calendar year" points={yearlyPoints(data.series.new_businesses, "businesses")} unit="new business records" />
       <Chart title="New memberships by month" points={monthlyPoints(data.series.memberships, "memberships")} kind="monthly" unit="membership records" />
-      <Chart title="New businesses by week" points={weeklyPoints(data.weekly_series.new_businesses, "businesses")} kind="weekly" unit="new business records" />
-      <Chart title="New memberships by week" points={weeklyPoints(data.weekly_series.memberships, "memberships")} kind="weekly" unit="membership records" />
-      <p className="analytics-note">Subscription event counts include selected types only: trial_started, past_due, restricted, plan_changed.</p>
-      <Chart title="Selected subscription events by month" points={eventMonthlyPoints(data.series)} kind="monthly" unit="selected subscription events" />
-      <Chart title="Selected subscription events by week" points={eventWeeklyPoints(data.weekly_series)} kind="weekly" unit="selected subscription events" />
     </div>
 
     <div className="analytics-charts">
@@ -229,7 +185,6 @@ export function AnalyticsPanel({ data, months, onMonthsChange }: { data: Analyti
       <div className="analytics-charts">
         <Chart title="Synthetic new businesses by month" points={monthlyPoints(data.synthetic.series.new_businesses, "businesses")} kind="monthly" unit="synthetic business records" />
         <YearlyChart title="Synthetic new businesses by calendar year" points={yearlyPoints(data.synthetic.series.new_businesses, "businesses")} unit="synthetic business records" />
-        <Chart title="Synthetic new memberships by week" points={weeklyPoints(data.synthetic.weekly_series.memberships, "memberships")} kind="weekly" unit="synthetic membership records" />
       </div>
     </details>
   </div>;

@@ -19,5 +19,6 @@ export function createOperatorAnalyticsRouter(
   const permission = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(forbidden()));
   router.use(authorize);
   router.get('/analytics', permission('platform.analytics.read'), controller.showAnalytics);
+  router.get('/analytics/paid-businesses', permission('platform.analytics.read'), controller.showPaidBusinesses);
   return router;
 }

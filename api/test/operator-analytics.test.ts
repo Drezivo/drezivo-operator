@@ -96,7 +96,7 @@ describe('operator platform analytics route', () => {
     expect(response.body.data).toEqual(analytics);
     expect(response.body.request_id).toBe(requestId);
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(seen).toEqual(['platform.analytics.read']);
+    expect(seen).toEqual(['platform.analytics.read', 'platform.analytics.read']);
   });
 
   it('uses the validated month window and rejects client snapshot time or scope', async () => {
@@ -111,6 +111,18 @@ describe('operator platform analytics route', () => {
       expect(denied.body.error.code).toBe('VALIDATION_FAILED');
     }
     expect(getAnalytics).toHaveBeenCalledTimes(1);
+  });
+
+  it('protects the paid-business count and reports unavailable data safely', async () => {
+    const seen: string[] = [];
+    const server = app(port({ getPaidBusinesses: async () => ({ count: 3, synthetic_count: null }) }), (name) => { seen.push(name); return (_req, _res, next) => next(); });
+    const result = await request(server).get('/api/v1/analytics/paid-businesses');
+    expect(result.status).toBe(200);
+    expect(result.body.data).toEqual({ count: 3, synthetic_count: null });
+    expect(result.headers['cache-control']).toBe('no-store');
+    expect(seen).toEqual(['platform.analytics.read', 'platform.analytics.read']);
+    expect((await request(app(port(), createPermissionMiddleware(denyAuthorizationPort))).get('/api/v1/analytics/paid-businesses')).status).toBe(403);
+    expect((await request(app(port())).get('/api/v1/analytics/paid-businesses')).status).toBe(503);
   });
 
   it('fails closed for absent principal and denied permission', async () => {

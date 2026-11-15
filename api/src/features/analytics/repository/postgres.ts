@@ -6,7 +6,7 @@ const day = 86400000, offset = 8 * 3600000;
 const month = (d: Date) => d.toISOString().slice(0, 7);
 function week(ms: number): string { const d = new Date(ms); d.setUTCDate(d.getUTCDate() + 3); const year = d.getUTCFullYear(); const jan4 = new Date(Date.UTC(year, 0, 4)); const monday = +jan4 - ((jan4.getUTCDay() || 7) - 1) * day; return `${year}-W${String(1 + Math.floor((ms - monday) / (7 * day))).padStart(2, '0')}`; }
 export function buildAnalytics(raw: unknown, requestedMonths: number, now = new Date(), synthetic = false): OperatorAnalyticsResponse {
-    const months = z.union([z.literal(12), z.literal(24), z.literal(36), z.literal(48)]).parse(requestedMonths);
+    const months = z.union([z.literal(6), z.literal(12), z.literal(24), z.literal(36), z.literal(48)]).parse(requestedMonths);
     const s = snapshot.parse(raw), local = new Date(+now + offset);
     const end = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1), start = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - months, 1);
     const thisMonday = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - ((local.getUTCDay() || 7) - 1) * day;
