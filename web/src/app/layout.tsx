@@ -10,8 +10,17 @@ const display = localFont({ src: [{path:"./fonts/bodoni.woff2",weight:"400 900",
 const body = localFont({src:"./fonts/jost.woff2",weight:"400 600",variable:"--font-jost",display:"swap"});
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NODE_ENV === "production"
+        ? "https://operator.drezivo.shop"
+        : "http://localhost:3010",
+  ),
   title: "Drezivo Operator",
   description: "Internal operations console for Drezivo.",
+  openGraph: { images: ["/marketing/drezivo_logo.png"] },
+  twitter: { card: "summary_large_image", images: ["/marketing/drezivo_logo.png"] },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
