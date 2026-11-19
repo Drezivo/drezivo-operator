@@ -66,7 +66,7 @@
   --shadow: 0 8px 30px rgb(31 23 18 / 6%);
   /* Atelier palette (the landing page's): filled controls are --blue-dark with --primary-ink text. */
   --primary-ink: #f5efe6;
-  --font-display: var(--font-bodoni), 'Bodoni 72', Didot, Georgia, serif;
+  --font-display: var(--font-playfair), Georgia, serif;
   font-family: var(--font-jost), 'Futura', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -565,7 +565,7 @@ tr:hover td { background: var(--surface-tint); }
 }
 
 /*
- * Atelier finish: the landing page's type pair and labels. Bodoni Moda (display) for the page title,
+ * Atelier finish: the landing page's type pair and labels. Playfair Display for the page title,
  * brand and sign-in headline only; Jost for everything else; numbers stay tabular sans because Didone
  * numerals read as letters at metric sizes. Uppercase labels carry the landing's 0.3em tracking.
  */
