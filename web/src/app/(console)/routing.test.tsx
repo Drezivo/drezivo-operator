@@ -80,9 +80,9 @@ function responseEnvelope(data: unknown, requestId: string) {
   return new Response(JSON.stringify({ success: true, request_id: requestId, data }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-function analyticsEnvelope() {
-  const months = Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(Date.UTC(2025, 8 + index, 1));
+function analyticsEnvelope(windowMonths = 12) {
+  const months = Array.from({ length: windowMonths }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 8 - windowMonths + index, 1));
     return { month: `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`, count: 0 };
   });
   const weeks = Array.from({ length: 52 }, (_, index) => {
@@ -95,7 +95,7 @@ function analyticsEnvelope() {
     return { week: `${year}-W${String(week).padStart(2, "0")}`, count: 0 };
   });
   return responseEnvelope({
-    as_of: "2026-09-25T00:00:00Z", timezone: "Asia/Manila", period: { from: "2025-08-31T16:00:00Z", to: "2026-08-31T16:00:00Z", months: 12 }, weekly_period: { from: "2025-09-21T16:00:00Z", to: "2026-09-20T16:00:00Z", weeks: 52 },
+    as_of: "2026-09-25T00:00:00Z", timezone: "Asia/Manila", period: { from: new Date(Date.UTC(2026, 8 - windowMonths, 1) - 8 * 3600000).toISOString(), to: "2026-08-31T16:00:00Z", months: windowMonths }, weekly_period: { from: "2025-09-21T16:00:00Z", to: "2026-09-20T16:00:00Z", weeks: 52 },
     businesses: { total: 3 }, subscriptions: { active: 2, trialing: 1, past_due: 0, restricted: 0, cancelled: 0 }, members: { provisioned: 6 },
     active_plan_monthly_list_price_run_rate: [], series: { new_businesses: months, memberships: months, subscription_events: [] }, weekly_series: { new_businesses: weeks, memberships: weeks, subscription_events: [] },
     forecasts: { new_businesses: [1, 3, 6, 12].map((horizon_months) => ({ horizon_months, withheld_reason: "insufficient_history" })), memberships: [1, 3, 6, 12].map((horizon_months) => ({ horizon_months, withheld_reason: "insufficient_history" })), active_subscribers: { withheld_reason: "incomplete_history" }, monthly_list_price_run_rate: { withheld_reason: "incomplete_history" } },
@@ -227,10 +227,32 @@ describe("App Router console pages", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<TestConsole />);
 
-    expect(await screen.findByRole("heading", { name: "New businesses by week" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "New businesses by month" })).toBeInTheDocument();
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://localhost:5080/api/v1/analytics?months=12");
     expect(new Headers(fetchMock.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer operator-session-token");
     expect(screen.getByRole("navigation", { name: "Main navigation" })).toBeInTheDocument();
+  });
+
+  it("defaults to six months and shows the independently loaded paid-business count", async () => {
+    visit("/analytics");
+    const fetchMock = vi.fn(async (url: string) => String(url).includes("paid-businesses")
+      ? responseEnvelope({ count: 7, synthetic_count: null }, "req_paid") : analyticsEnvelope(6));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<TestConsole />);
+    expect(await screen.findByRole("heading", { name: "New businesses by month" })).toBeInTheDocument();
+    expect(await screen.findByText("Paid businesses")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Paid businesses").parentElement).toHaveTextContent("7"));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/analytics?months=6"))).toBe(true);
+    expect(screen.getByLabelText("History")).toHaveValue("6");
+  });
+
+  it("keeps the dashboard usable when the paid-business count is unavailable", async () => {
+    visit("/analytics");
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => String(url).includes("paid-businesses")
+      ? new Response(JSON.stringify({ success: false, error: { code: "DEPENDENCY_UNAVAILABLE", message: "Unavailable" }, request_id: "req_paid" }), { status: 503, headers: { "Content-Type": "application/json" } }) : analyticsEnvelope(6)));
+    render(<TestConsole />);
+    expect(await screen.findByRole("heading", { name: "New businesses by month" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Paid businesses").parentElement).toHaveTextContent("Unavailable"));
   });
 
   it("shows a recoverable session error and does not fetch when Clerk returns no token", async () => {

@@ -31,7 +31,7 @@ provider identifiers, secrets, or arbitrary provider payloads.
 
 ## Query and timing
 
-The only query field is `months`, an integer window of `12`, `24`, `36`, or `48`; it defaults to 48.
+The only query field is `months`, an integer window of `6`, `12`, `24`, `36`, or `48`; it defaults to 48 for existing API callers. The console defaults to six months.
 The Business API chooses `as_of`. A caller-supplied `as_of` is rejected. Monthly period boundaries
 are complete `Asia/Manila` calendar months, represented as UTC instants with a half-open `[from, to)`
 interval. Business and member series contain one zero-filled bucket for every selected month in order;
@@ -91,3 +91,14 @@ forecast gaps/duplicate horizons/wrong point counts/month gaps, changed month wi
 configuration and claims, canonical query hash binding, upstream timeout/failure, request correlation,
 and a successful complete-window aggregate response.
 They run without a database and do not establish production configuration or source-data correctness.
+
+## Paid businesses
+
+`GET /api/v1/analytics/paid-businesses` requires `platform.analytics.read` and returns
+`{ count, synthetic_count }` inside the standard response envelope. It reads a single reviewed
+Business database aggregate: active, non-Free subscriptions whose paid period contains the database
+statement time. A manually restricted tenant remains included. In synthetic mode live `count` is zero
+and the synthetic count is separate; unavailable sources return an error rather than a fabricated zero.
+The migration must be deployed to the Business database before enabling this metric. The legacy internal
+analytics adapter requests twelve months upstream when six months are requested and trims the validated
+monthly series; it does not provide the new aggregate and therefore returns it as unavailable.

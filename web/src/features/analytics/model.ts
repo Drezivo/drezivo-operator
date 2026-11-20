@@ -15,7 +15,7 @@ export type AnalyticsRunRate = Array<{ currency: string; amount_minor: string; a
 export type AnalyticsResponse = {
   as_of: string;
   timezone: "Asia/Manila";
-  period: { from: string; to: string; months: 12 | 24 | 36 | 48 };
+  period: { from: string; to: string; months: 6 | 12 | 24 | 36 | 48 };
   weekly_period: { from: string; to: string; weeks: 52 };
   businesses: { total: number };
   subscriptions: { active: number; trialing: number; past_due: number; restricted: number; cancelled: number };
@@ -39,7 +39,7 @@ export type AnalyticsResponse = {
   };
 };
 
-const supportedMonths = [12, 24, 36, 48] as const;
+const supportedMonths = [6, 12, 24, 36, 48] as const;
 const horizons = [1, 3, 6, 12] as const;
 const eventTypes = ["trial_started", "past_due", "restricted", "plan_changed"] as const;
 const dayMs = 86_400_000;
@@ -276,7 +276,7 @@ export function parseAnalyticsResponse(value: unknown): AnalyticsResponse {
 }
 
 export function analyticsPath(months: number): string {
-  if (!supportedMonths.includes(months as typeof supportedMonths[number])) throw new RangeError("Analytics history must be 12, 24, 36, or 48 months.");
+  if (!supportedMonths.includes(months as typeof supportedMonths[number])) throw new RangeError("Analytics history must be 6, 12, 24, 36, or 48 months.");
   return `/analytics?months=${months}`;
 }
 

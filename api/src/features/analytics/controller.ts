@@ -32,6 +32,17 @@ export function createOperatorAnalyticsController(
   const service = createAnalyticsReadService(readPort);
   const permission = options.permissionMiddleware ?? (() => (_req: Request, _res: Response, next: NextFunction) => next(forbidden()));
   return {
+    showPaidBusinesses: async (req, res, next) => {
+      try {
+        if (Object.keys(req.query).length > 0) throw new AppError(400, 'VALIDATION_FAILED', 'The analytics query is invalid.');
+        if (!res.locals.operatorPrincipal) throw forbidden();
+        const schema = z.object({ count: z.number().int().nonnegative().safe(), synthetic_count: z.number().int().nonnegative().safe().nullable() }).strict();
+        const result = schema.safeParse(await service.getPaidBusinesses());
+        if (!result.success) throw new AppError(503, 'DEPENDENCY_INVALID_RESPONSE', 'The paid-business count is unavailable.');
+        res.setHeader('Cache-Control', 'no-store');
+        res.json({ success: true, data: result.data, request_id: String(res.locals.requestId ?? 'unknown') });
+      } catch (error) { sendError(next, error); }
+    },
     showAnalytics: async (req, res, next) => {
     try {
       const query = parseQuery(req);

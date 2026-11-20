@@ -190,7 +190,7 @@ const lifecycleCounts = z.object({ active: count, trialing: count, past_due: cou
 
 /** Mirrors @drezivo/contracts operatorAnalyticsQuery until the peer package is consumable here. */
 export const operatorAnalyticsQuery = z.object({
-  months: z.union([z.literal('12'), z.literal('24'), z.literal('36'), z.literal('48')]).transform(Number).default(48),
+  months: z.union([z.literal('6'), z.literal('12'), z.literal('24'), z.literal('36'), z.literal('48')]).transform(Number).default(48),
 }).strict();
 
 /** Mirrors @drezivo/contracts operatorAnalyticsResponse; upstream and route DTOs use this strict shape. */
@@ -200,7 +200,7 @@ export const operatorAnalyticsResponse = z.object({
   period: z.object({
     from: z.string().datetime({ offset: true }),
     to: z.string().datetime({ offset: true }),
-    months: z.union([z.literal(12), z.literal(24), z.literal(36), z.literal(48)]),
+    months: z.union([z.literal(6), z.literal(12), z.literal(24), z.literal(36), z.literal(48)]),
   }).strict().refine(({ from, to }) => Date.parse(from) < Date.parse(to)),
   weekly_period: z.object({
     from: z.string().datetime({ offset: true }),
@@ -259,6 +259,7 @@ export type OperatorAnalyticsResponse = z.infer<typeof operatorAnalyticsResponse
 
 export type AnalyticsReadPort = {
   getAnalytics(input: { principal: SafeOperatorPrincipal; months: OperatorAnalyticsQuery['months']; requestId: string }): Promise<OperatorAnalyticsResponse>;
+  getPaidBusinesses?(): Promise<{ count: number; synthetic_count: number | null }>;
 };
 
 export const unavailableAnalyticsReadPort: AnalyticsReadPort = {

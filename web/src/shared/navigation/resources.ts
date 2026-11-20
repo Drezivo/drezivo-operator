@@ -35,7 +35,7 @@ export function visibleResources(configured?: string) {
 
 export const resourceHelp: Record<ResourceId, string> = {
   overview: "Current platform activity from the operator API.",
-  analytics: "Monthly platform trends and additions projected from the operator API. List-price run-rate is not cash income.",
+  analytics: "Explore platform trends, business activity and subscription information.",
   clients: "Every client business with its trial, payment and staff status. Lock or unlock a business, suspend staff, set a trial end or record a payment.",
   businesses: "Tenant records returned by the operator API.",
   audit: "System billing events and operator accountability, with responsible actor, target, outcome and request trace.",
